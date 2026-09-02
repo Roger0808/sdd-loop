@@ -11,7 +11,9 @@
  */
 
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildLoopCheckReport } from "../src/validation/loop-check.js";
+import { runInit } from "./lib/init.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
 import { pickExample } from "../src/spec-guide/example.js";
@@ -22,6 +24,13 @@ const HELP = `sdd-loop — SDD Loop 的两件仪器
 用法：
   sdd-loop check [--repo <dir>] [--status-file <path>] [--archive-dir <path>] [--json]
   sdd-loop guide [--type <doc.clause>] [--repo <dir>] [--docs-dir <path>] [--json]
+  sdd-loop init -g [--claude] [--pi] [--show]
+
+init -g：把本包装进这台机器的 agent 宿主（Claude Code 软链 skill，pi 登记本包）。
+  这是装**工具**，不是初始化仓库——初始化仓库是 sdd-init skill 的活。
+  不带 --claude/--pi 时装进所有检测到的宿主；没检测到的跳过并说明。
+  --show          只看要做什么，不动手
+  绝不删任何已存在的文件或目录：位置被占着就报出来交给你。
 
 check：把状态文件的「声明」和文件里的「事实」摆在一起比。只读，不改任何东西。
   --repo          仓库根，默认当前目录
@@ -40,12 +49,17 @@ guide：写之前给要求。「我要写这一类东西，该写哪几项」+ �
   2  判据读不出来（此时不给任何结论）/ 类型未知（guide）
 `;
 
+// 布尔标志：不吃后面那个 token。少一个登记，`--show <子命令>` 就会把子命令
+// 当成 --show 的值吞掉，而且不报错——所以新加无值标志必须同时加进这里。
+const BOOLEAN_FLAGS = new Set(["json", "help", "global", "show", "claude", "pi"]);
+const SHORT_FLAGS = { "-h": "help", "-g": "global" };
+
 function parseArgs(argv) {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
-    if (token === "--json") args.json = true;
-    else if (token === "--help" || token === "-h") args.help = true;
+    if (SHORT_FLAGS[token]) args[SHORT_FLAGS[token]] = true;
+    else if (token.startsWith("--") && BOOLEAN_FLAGS.has(token.slice(2))) args[token.slice(2)] = true;
     else if (token.startsWith("--")) args[token.slice(2)] = argv[++i];
     else args._.push(token);
   }
@@ -221,6 +235,14 @@ function main() {
   }
   if (command === "check") return runCheck(args);
   if (command === "guide") return runGuide(args);
+  if (command === "init") {
+    return runInit(args, {
+      packageRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+      stdout: (s) => process.stdout.write(s),
+      stderr: (s) => process.stderr.write(s),
+      exit: (code) => process.exit(code),
+    });
+  }
 
   process.stderr.write(`未知命令：${command}\n\n${HELP}`);
   process.exit(EXIT_UNUSABLE);

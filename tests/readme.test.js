@@ -94,6 +94,12 @@ test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
 });
 
 test("README 里的 sdd-loop 命令都是真实子命令", () => {
+  // 真相源是 CLI 的分发处本身（`command === "…"`），不是这里手写的清单——
+  // 手写清单就是下一个会漂的数字。
+  const cli = fs.readFileSync(path.join(REPO_ROOT, "scripts/sdd-loop.mjs"), "utf8");
+  const real = new Set([...cli.matchAll(/command === "([a-z][a-z-]*)"/g)].map((m) => m[1]));
+  assert.ok(real.size > 0, "从 CLI 里一个子命令都没解析出来，这条锁就空了");
+
   // 反引号可有可无：README 的命令主要出现在 ```bash 代码块里，那里没有反引号。
   // 变异测试实测过：只匹配行内代码时，往代码块里塞一个不存在的子命令抓不到。
   // 首字符必须是字母，`--type` 之类的选项才不会被当成子命令。
@@ -102,11 +108,22 @@ test("README 里的 sdd-loop 命令都是真实子命令", () => {
   );
   assert.ok(cmds.size > 0, "README 一条 sdd-loop 命令都不给，这条锁就空了");
   for (const c of cmds) {
-    assert.ok(
-      ["check", "guide"].includes(c),
-      `README 写了 \`sdd-loop ${c}\`，但 CLI 只有 check / guide 两个子命令`,
-    );
+    assert.ok(real.has(c), `README 写了 \`sdd-loop ${c}\`，但 CLI 的子命令只有 ${[...real].join(" / ")}`);
   }
+
+  // 反向：CLI 有的子命令，README 得提到——装不上的命令等于没有。
+  for (const c of real) {
+    assert.ok(cmds.has(c), `CLI 有 \`sdd-loop ${c}\`，README 一个字没写——用户不会知道它存在`);
+  }
+});
+
+test("README 的安装步骤与 help 都指向 init -g，不再教人手工 ln -s", () => {
+  assert.match(README, /sdd-loop init -g/, "安装步骤得给出 init -g");
+  assert.doesNotMatch(
+    README,
+    /ln -s .*skills/,
+    "README 还在教手工软链——安装器和手工步骤并存，用户照着手工那条走就绕过了占位检查",
+  );
 });
 
 test("README 承诺的本地文件都存在（安装步骤与链接不许断）", () => {

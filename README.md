@@ -18,40 +18,40 @@
 
 ## 安装
 
-两个宿主能力一样,只是命令名不同。
-
-### Claude Code
+三条命令,Claude Code 和 pi 一起装好:
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
 npm link
-ln -s "$PWD/skills/sdd-init" ~/.claude/skills/sdd-init
-ln -s "$PWD/skills/sdd-interview" ~/.claude/skills/sdd-interview
+sdd-loop init -g
 ```
 
-验证:
+`npm link` 提供 `sdd-loop` 命令——访谈过程中要用它查口径,没有这条命令那一步就是空的。
+`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上**检测到的**宿主:Claude Code 软链进 `~/.claude/skills/`,pi 登记本包。没装的宿主自动跳过。
+
+先看它要做什么,不动手:
 
 ```bash
-which sdd-loop && sdd-loop guide --type architecture.schema-change
+sdd-loop init -g --show
 ```
 
-`npm link` 不能省——访谈过程中要用 `sdd-loop guide` 查口径,没有这条命令那一步就是空的。
+`init -g` **绝不删任何已存在的文件或目录**。位置被别的东西占着(比如你自己写了个同名 skill),它报出来交给你,不替你做减法。重复跑是安全的。
 
-### pi
+只想装一个宿主:`sdd-loop init -g --claude` 或 `--pi`。
 
-```bash
-npm install -g @earendil-works/pi-coding-agent
-pi install git:github.com/Roger0808/sdd-loop
-```
+> pi 用户也可以不 clone,直接 `pi install git:github.com/Roger0808/sdd-loop`。代价是没有 `sdd-loop` 这条命令,查口径只能走 pi 的 `sdd_spec_guide` 工具。
 
 ### 命令对照
 
 | 做什么 | Claude Code | pi |
 |---|---|---|
+| 把本包装进宿主(每台机器一次) | `sdd-loop init -g` | `sdd-loop init -g` |
 | 初始化仓库(每个仓库一次) | `/sdd-init` | `/sdd init` |
 | 走访谈 | `/sdd-interview` | `/sdd` |
 | 状态对账 | `sdd-loop check` | `sdd_loop_check` 工具 |
 | 查条款口径 | `sdd-loop guide --type <类型>` | `sdd_spec_guide` 工具 |
+
+**`sdd-loop init -g` 和 `/sdd-init` 是两件事**,名字像但别混:前者装工具(每台机器一次),后者初始化一个仓库(每个仓库一次)。`sdd-loop init` 不带 `-g` 会直接告诉你这一点,不会瞎猜。
 
 要求 Node ≥ 20。
 
