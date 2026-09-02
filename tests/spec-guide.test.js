@@ -147,7 +147,7 @@ test("编号：标题里的编号标记 inHeading（### BND-002 … 是定义处
 });
 
 test("编号：不像编号的不报（小写、段长越界、数字位数越界）", () => {
-  const result = scanIdText("abc-001 A-001 ABCDEFG-001 BND-1 BND-00001 v2-sdd-loop");
+  const result = scanIdText("abc-001 A-001 ABCDEFG-001 BND-1 BND-00001 x9-some-branch");
   assert.deepEqual(result.families, []);
 });
 

@@ -4,15 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// P13-A：依赖声明锁——判据式，不枚举包名。
+// 依赖声明锁——判据式，不枚举包名。
 // 判据：生产代码（src/ scripts/ extensions/）里的**裸模块 import**
 // （不是相对路径、不是 node: 内建）必须能在 package.json 的
 // dependencies ∪ peerDependencies 里找到声明。
 // peerDependencies 即「由宿主安装机制提供」的显式登记——pi 的
-// `pi install` 用 `npm install --omit=dev`，npm ≥7 会自动装 peerDeps
-// （实测见 README「维护者提示 · 依赖声明」）。
+// `pi install` 用 `npm install --omit=dev`，npm ≥7 会自动装 peerDeps。
 //
-// 为什么需要它：P13 之前 extension 以值形式 import 了两个 @earendil-works 包，
+// 为什么需要它：extension 曾以值形式 import 两个 @earendil-works 包，
 // 而 package.json 只在 peerDependencies 里登着——能不能装上全靠实测撞。
 // 有了这条锁，下次谁新加一个 npm 依赖忘了声明，锁当场报。
 //

@@ -270,9 +270,13 @@ test("写之前查口径：skill 必须把 guide 指给访谈者", () => {
   assert.ok(/sdd-loop guide --type/.test(text), "skill 没有指引「写之前先跑 sdd-loop guide 查口径与编号族」");
 });
 
-// P16-2 的锁随旧 skill 退役后挪到这里（判据原话：包边界要显式——分发什么是决定，
-// 不是「目录里有什么就发什么」的副作用。曾经整目录注册把 8 个维护者自用技能
-// 塞给了每个安装者）。
+// 包边界要显式——分发什么是决定，不是「目录里有什么就发什么」的副作用。
+// 实测：整目录注册曾把 8 个维护者自用技能塞给每个安装者。
+//
+// 这条锁只管 pi 一侧（pi.skills 是显式清单）。Claude Code 那边按 README 是
+// 手动 `ln -s` 每个 skill，锁不到——那 8 个维护者技能是软链进 skills/ 的，
+// 被这里的 !isSymbolicLink 过滤掉，锁一直是绿的却照样发出去了。
+// 真正的防线在 .gitignore：skills/* 默认忽略，只放行本包自己的两个目录。
 test("pi.skills 显式列出本包技能，且与 skills/ 下的真目录一一对应", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
   const realSkills = fs.readdirSync(path.join(REPO_ROOT, "skills"), { withFileTypes: true })

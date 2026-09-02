@@ -2,9 +2,9 @@
  * README 的锁。
  *
  * README 是给使用者看的唯一入口，它抄了三类会漂的数字与名字：
- * 站数、条款类型、命令名。手抄的数字漂过两次（v1 首页写「八步」而计数器写
- * 「0/9」；v2 大纲标题写「八站」而对账段蕴含七站），所以这里一律从真相源
- * 推导，不做字面比对。
+ * 站数、条款类型、命令名。手抄的数字漂过不止一次——首页写一个数、大纲写另一个，
+ * 两边都言之凿凿。所以这里一律从真相源（SKILL.md、guide 的实际输出、CLI 的
+ * 子命令表）推导，不做字面比对：字面比对只能锁住「两处一致」，锁不住「都错了」。
  */
 
 import { test } from "node:test";
@@ -83,7 +83,7 @@ test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
   );
   const allowed = new Set([
     ...DEFAULT_CONVENTION.stageDocs,
-    "status", "agents", "claude", "readme", "reachability",
+    "status", "agents", "claude", "readme",
   ]);
   for (const name of mentioned) {
     assert.ok(

@@ -1,10 +1,9 @@
 /**
  * 口径字典（sdd-loop 能力二）：「我要写这一类东西，该写哪几项」。
  *
- * 从 v1 的 TABLE_SDD_REQUIREMENTS（src/domain/fields/field-tables.js）迁移重组：
- * 键从「步骤的附属物」（fields / stateMachines / pageBehaviors）改成
- * 「文档类型 × 条款类型」（specification.entity-table / specification.state-machine …）。
- * 旧表在 v1 退役（阶段五）前保持原样，两处并存的窗口只有本分支的几个阶段。
+ * 键是「文档类型 × 条款类型」（specification.entity-table / specification.state-machine …），
+ * 不是「访谈第几站的附属物」。理由：访谈站数会变，文档里的条款类型不会——
+ * 按站组织的字典每改一次大纲就要跟着重排，按条款类型组织的不用。
  *
  * 两条刻意为之的形状：
  *

@@ -9,3 +9,10 @@ node_modules/
 # 让每个 clone 的人自动继承免确认权限。
 .claude/
 .rtk/
+.agents/
+
+# 维护者本机装的第三方 skill 会往 skills/ 里软链（曾提交进来 8 条指向
+# .agents/ 的死链）。本包只分发自己的两个 skill，白名单在这里定死。
+skills/*
+!skills/sdd-init/
+!skills/sdd-interview/
