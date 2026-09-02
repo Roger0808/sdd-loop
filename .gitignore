@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+
+*.log
+.codegraph/
+
+# 本地 agent / 工具配置：属于维护者的机器，不随包分发。
+# .claude/settings.json 是权限白名单（含 git push），跟着公开仓库分发等于
+# 让每个 clone 的人自动继承免确认权限。
+.claude/
+.rtk/
