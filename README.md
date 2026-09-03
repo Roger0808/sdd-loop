@@ -41,7 +41,7 @@ npm link
 sdd-loop init -g
 ```
 
-`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主,没检测到的跳过。
+`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主,没检测到的跳过。下表 10 个走 Agent Skills 开放标准的宿主**共用同一份软链**——装一次,它们都发现得到。
 
 | 宿主 | 落点 | 初始化仓库 | 走访谈 |
 |---|---|---|---|
@@ -72,6 +72,15 @@ sdd-loop init -g --show     # 只看要做什么，不动手
 重复跑是安全的:**绝不删任何已存在的文件或目录**。
 
 装完**要重启宿主**才会加载到新 skill(Gemini 里也可以 `/skills reload`)。
+
+<details>
+<summary>从 0.x 升级</summary>
+
+0.x 往各宿主的品牌目录里装(`~/.codex/skills/`、`~/.gemini/skills/`),现在改成共用 `~/.agents/skills/` 一份。宿主**不去重**:同一个 skill 两个目录里都有,它会被列两遍,模型看到两个同名 skill。
+
+`init -g` 会把旧软链找出来、给出 `rm` 命令,但**不替你删**——万一那是你自己重建的。删掉即可,skill 内容没变。
+
+</details>
 
 ## 快速开始
 
