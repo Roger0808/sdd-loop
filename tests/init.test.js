@@ -21,9 +21,10 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI = path.join(REPO_ROOT, "scripts/sdd-loop.mjs");
 
 /** 造一个假 home。hosts 决定哪几个宿主「装在这台机器上」。 */
-function fakeHome({ claude = true, pi = true, piPackages } = {}) {
+function fakeHome({ claude = true, codex = false, pi = true, piPackages } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-home-"));
   if (claude) fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+  if (codex) fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
   if (pi) {
     const agentDir = path.join(home, ".pi", "agent");
     fs.mkdirSync(agentDir, { recursive: true });
@@ -53,6 +54,7 @@ function pathWith(binName) {
 const claudeHost = (plan) => plan.hosts.find((h) => h.id === "claude");
 const piHost = (plan) => plan.hosts.find((h) => h.id === "pi");
 const geminiHost = (plan) => plan.hosts.find((h) => h.id === "gemini");
+const codexHost = (plan) => plan.hosts.find((h) => h.id === "codex");
 
 // ---------------------------------------------------------------- 装得上
 
@@ -266,12 +268,92 @@ test("不越权对 Gemini 一样成立：占位的真实目录动手之后内容
   assert.equal(fs.readFileSync(path.join(mine, "SKILL.md"), "utf8"), "我自己写的，别动");
 });
 
-test("两个 skills-dir 宿主各装各的，互不影响", () => {
-  const home = fakeHome({ pi: false });
+// ---------------------------------------------------------------- Codex
+
+test("Codex 没装：没有 ~/.codex/ 就跳过，也不凭空建出 skills/", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const host = codexHost(planFor(home));
+  assert.equal(host.detected, false);
+  assert.match(host.reason, /\.codex/, "得说清楚判据是哪个目录，否则用户不知道怎么让它认出来");
+
+  applyPlan(planFor(home));
+  assert.equal(fs.existsSync(path.join(home, ".codex")), false, "没检测到就不该建目录");
+});
+
+test("Codex 按 ~/.codex/ 目录判，不按 PATH 上有没有 codex 判", () => {
+  // 判据选目录不选命令是有取舍的：目录能覆盖只装了桌面端/IDE 扩展、命令没进 PATH
+  // 的人。反过来，PATH 上有 codex 但主目录里没有 ~/.codex/ 时不该动手——那时
+  // 连宿主自己都还没落过盘，凭空建目录就是替它做决定。
+  const home = fakeHome({ claude: false, pi: false });
+  const env = { PATH: pathWith("codex") };
+  assert.equal(codexHost(planFor(home, null, env)).detected, false, "只有 codex 命令、没有 ~/.codex/ 时不该算检测到");
+
+  fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+  assert.equal(codexHost(planFor(home, null, { PATH: "" })).detected, true, "有 ~/.codex/ 就该认出来，与 PATH 无关");
+});
+
+test("Codex 装了：两个 skill 软链进 ~/.codex/skills/", () => {
+  // 落点与「认不认软链」是实测的：CODEX_HOME=<临时目录> codex debug prompt-input
+  // 渲染出的模型可见 prompt 里，软链进去的 skill 在清单中且路径解析到了软链目标。
+  const home = fakeHome({ claude: false, codex: true, pi: false });
+
+  const plan = planFor(home);
+  const host = codexHost(plan);
+  assert.equal(host.detected, true);
+  assert.equal(host.dir, path.join(home, ".codex", "skills"), "落点是 $CODEX_HOME/skills");
+  assert.equal(host.items.length, 2);
+
+  assert.ok(applyPlan(plan).every((r) => r.ok));
+
+  for (const item of host.items) {
+    assert.ok(fs.lstatSync(item.target).isSymbolicLink());
+    assert.ok(
+      fs.existsSync(path.join(item.target, "SKILL.md")),
+      `顺着软链要读得到 ${item.name} 的 SKILL.md——Codex 认的也是 Agent Skills 标准的 SKILL.md`,
+    );
+  }
+  assert.equal(hasWork(planFor(home)), false, "装完就该没活了");
+});
+
+test("不越权对 Codex 一样成立：占位的真实目录动手之后内容还在", () => {
+  const home = fakeHome({ claude: false, codex: true, pi: false });
+  const mine = path.join(home, ".codex", "skills", "sdd-init");
+  fs.mkdirSync(mine, { recursive: true });
+  fs.writeFileSync(path.join(mine, "SKILL.md"), "我自己写的，别动");
+
+  const plan = planFor(home);
+  assert.equal(codexHost(plan).items.find((i) => i.name === "sdd-init").state, "occupied");
+
+  applyPlan(plan);
+  assert.equal(fs.readFileSync(path.join(mine, "SKILL.md"), "utf8"), "我自己写的，别动");
+});
+
+test("不碰 ~/.agents/skills/：那是跨宿主共享目录，往里装等于替别的宿主做决定", () => {
+  // 实测：Codex 除了 $CODEX_HOME/skills 还会读 ~/.agents/skills（不受 CODEX_HOME
+  // 影响）。装那儿更省事，但一次写入会同时改掉好几个宿主看到的东西——超出了
+  // 「装进检测到的宿主」这句话的范围。落点一律按宿主分开。
+  const home = fakeHome({ claude: true, codex: true, pi: false });
+  const shared = path.join(home, ".agents", "skills");
+  fs.mkdirSync(shared, { recursive: true });
+  const before = fs.readdirSync(shared);
+
+  const plan = planFor(home, null, { PATH: pathWith("gemini") });
+  for (const host of plan.hosts) {
+    if (host.kind !== "symlink") continue;
+    assert.doesNotMatch(host.dir, /\.agents/, `${host.id} 的落点落到共享目录里去了`);
+  }
+
+  applyPlan(plan);
+  assert.deepEqual(fs.readdirSync(shared), before, "共享目录被写了东西");
+});
+
+test("三个 skills-dir 宿主各装各的，互不影响", () => {
+  const home = fakeHome({ codex: true, pi: false });
   const env = { PATH: pathWith("gemini") };
   applyPlan(planFor(home, null, env));
 
-  for (const dir of [path.join(home, ".claude", "skills"), path.join(home, ".gemini", "skills")]) {
+  for (const seg of [".claude", ".codex", ".gemini"]) {
+    const dir = path.join(home, seg, "skills");
     assert.deepEqual(fs.readdirSync(dir).sort(), ["sdd-init", "sdd-interview"], `${dir} 没装齐`);
   }
 });

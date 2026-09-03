@@ -2,7 +2,7 @@
  * 安装计划（`sdd-loop init -g`）的**唯一判定源**。
  *
  * 只算不做：本模块只读盘、只产出「该做什么」，一个字节都不写。真正建软链、
- * 跑 `pi install` 的是 scripts/sdd-loop.mjs。这样 `--show` 和真跑用的是同一份
+ * 跑 `pi install` 的是 scripts/lib/init.mjs。这样 `--show` 和真跑用的是同一份
  * 判定，不会出现「预览说 A、实际做 B」——那是安装器最容易骗人的地方。
  *
  * 两条刻意为之的形状：
@@ -17,31 +17,45 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * 宿主表。加新宿主（Codex …）就往这里加一项，
+ * 宿主表。加新宿主就往这里加一项，
  * CLI 与测试都从这张表推导，不枚举 id。
  */
-export const HOST_IDS = ["claude", "gemini", "pi"];
+export const HOST_IDS = ["claude", "codex", "gemini", "pi"];
 
-const HOST_LABEL = { claude: "Claude Code", gemini: "Gemini CLI", pi: "pi" };
+const HOST_LABEL = { claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI", pi: "pi" };
 
 /**
  * 走「软链进宿主的 skills 目录」这条路的宿主。
  *
- * **两个宿主的检测信号刻意不一样，别统一。**
- * Claude Code 按 `~/.claude` 在不在判；Gemini 必须按 `gemini` 二进制在不在
- * PATH 上判，因为 `~/.gemini/` 不是 Gemini CLI 独占的——Antigravity IDE 也用
- * 这个目录（实测：一台没装 Gemini CLI 的机器上 `~/.gemini/GEMINI.md` 和
- * settings.json 都在）。按目录判会在这类机器上误报「装了」，然后凭空建出一个
- * `~/.gemini/skills/`。假警报比漏报更致命，这里宁可漏。
+ * **各宿主的检测信号刻意不一样，别统一。** 判据要按「这个目录还有谁在写」来选：
+ *
+ * - Claude Code、Codex 按目录在不在判。`~/.claude/`、`~/.codex/` 没有已知的
+ *   第三方共用者，且目录判能覆盖只装了桌面端/IDE 扩展、命令没进 PATH 的人。
+ * - Gemini 必须按 `gemini` 二进制在不在 PATH 上判：`~/.gemini/` 不是 Gemini CLI
+ *   独占的——Antigravity IDE 也用这个目录（实测：一台没装 Gemini CLI 的机器上
+ *   `~/.gemini/GEMINI.md` 和 settings.json 都在）。按目录判会在这类机器上误报
+ *   「装了」，然后凭空建出一个 `~/.gemini/skills/`。假警报比漏报更致命，宁可漏。
+ *
+ * Codex 的落点与「认不认软链」是实测过的，不是照着文档抄的：
+ * `CODEX_HOME=<临时目录> codex debug prompt-input` 渲染模型可见的 prompt，
+ * 软链进去的 skill 出现在清单里且路径解析到了软链目标。顺带确认 Codex 还会读
+ * `~/.agents/skills/`（跨宿主共享目录，不受 CODEX_HOME 影响）——**我们不碰它**，
+ * 那是好几个宿主共用的地方，往里塞东西等于替用户给别的宿主也装上了。
  */
 const SKILLS_DIR_HOSTS = {
   claude: {
-    configDir: (home) => path.join(home, ".claude"),
     skillsDir: (home) => path.join(home, ".claude", "skills"),
     detect: (home) =>
       fs.existsSync(path.join(home, ".claude"))
         ? null
         : `没有 ${path.join(home, ".claude")}——这台机器上看不到 Claude Code`,
+  },
+  codex: {
+    skillsDir: (home) => path.join(home, ".codex", "skills"),
+    detect: (home) =>
+      fs.existsSync(path.join(home, ".codex"))
+        ? null
+        : `没有 ${path.join(home, ".codex")}——这台机器上看不到 Codex`,
   },
   gemini: {
     skillsDir: (home) => path.join(home, ".gemini", "skills"),

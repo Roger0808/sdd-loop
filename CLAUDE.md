@@ -35,7 +35,8 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | `node --test --test-timeout=30000 --test-force-exit tests/<file>.test.js` | 单文件。**两个 flag 都不能省**：Node 默认测试超时无限，挂起的 handler 会让 run 挂死而不是变红；`--test-force-exit` 才是真正结束 run 的那个。 |
 | `node scripts/sdd-loop.mjs check --repo <dir>` | 状态对账 CLI。 |
 | `node scripts/sdd-loop.mjs guide --type <doc.clause> [--repo <dir>]` | 口径字典 CLI。 |
-| `node scripts/sdd-loop.mjs init -g [--show]` | 把本包装进本机宿主（Claude Code / Gemini CLI / pi）。**改代码后别拿真 home 试**，用 `HOME=<临时目录>` 跑；试 Gemini 还要伪造 PATH。 |
+| `node scripts/sdd-loop.mjs init -g [--show]` | 把本包装进本机宿主（Claude Code / Codex / Gemini CLI / pi）。**改代码后别拿真 home 试**，用 `HOME=<临时目录>` 跑；试 Gemini 还要伪造 PATH。 |
+| `CODEX_HOME=<临时目录> codex debug prompt-input "hi"` | 验 Codex 到底发现了哪些 skill——渲染模型可见的 prompt，离线、不调模型、不写盘。比让模型自述可靠，也是「Codex 认软链」这条结论的来源。 |
 | `node scripts/dead-exports.mjs` | 导出级可达性扫描。判据与盲区见脚本头注；当前基线 `TOTAL: 20 DEAD: 0`。 |
 
 ## Architecture
@@ -59,8 +60,8 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 4. **语料文档不是阶段文档**：判阶段只认 `convention.stageDocs` 的文件名，不认所在目录。
 5. **不硬编码任何项目的目录约定**：`docs/loops/loop-N/` 是默认值不是前提，覆盖走 convention。
 6. **git 查询不可用返回 null**（未知），不谎报 0。
-7. **宿主检测信号按宿主选，不许「统一一下」**：Claude Code 按 `~/.claude` 目录判，Gemini 必须按 PATH 上有没有 `gemini` 判。`~/.gemini/` 不是 Gemini CLI 独占的——Antigravity IDE 也用它，实测一台没装 Gemini CLI 的机器上 `~/.gemini/GEMINI.md` 和 settings.json 都在。按目录判会误报「装了」并凭空建出 `~/.gemini/skills/`。这条有独立命名的锁。
-8. **`init -g` 是安装器，不是仪器**——它是全包唯一会写盘的路径，边界写死在两处：只写宿主配置目录（`~/.claude/skills`、pi 的 settings），**不碰用户的仓库**；只新建软链，**绝不删除任何已存在的文件或目录**（占位的可能是用户自己写的同名 skill）。改这一块必须重跑 `tests/init.test.js` 里那两条「不越权」锁，且要验「动手之后内容还在」，不是只验计划里标了 occupied——标了照删是最典型的空绿。
+7. **宿主检测信号按宿主选，不许「统一一下」**：判据要按「这个目录还有谁在写」来挑。Claude Code、Codex 按目录判（`~/.claude`、`~/.codex` 没有已知的第三方共用者，且目录判能覆盖只装了桌面端/IDE 扩展、命令没进 PATH 的人）；Gemini 必须按 PATH 上有没有 `gemini` 判——`~/.gemini/` 不是 Gemini CLI 独占的，Antigravity IDE 也用它，实测一台没装 Gemini CLI 的机器上 `~/.gemini/GEMINI.md` 和 settings.json 都在，按目录判会误报「装了」并凭空建出 `~/.gemini/skills/`。每条判据都有独立命名的锁。
+8. **`init -g` 是安装器，不是仪器**——它是全包唯一会写盘的路径，边界写死在三处：只写**宿主自己的**配置目录（`~/.claude/skills`、`~/.codex/skills`、`~/.gemini/skills`、pi 的 settings），**不碰用户的仓库**；**不碰 `~/.agents/skills/`** 那类跨宿主共享目录（实测 Codex 也读它，且不受 `CODEX_HOME` 影响——往那儿写一次等于替用户给别的宿主也装上了，超出「装进检测到的宿主」这句话的范围）；只新建软链，**绝不删除任何已存在的文件或目录**（占位的可能是用户自己写的同名 skill）。改这一块必须重跑 `tests/init.test.js` 里那几条「不越权」锁，且要验「动手之后内容还在」，不是只验计划里标了 occupied——标了照删是最典型的空绿。
 
 ## Testing
 

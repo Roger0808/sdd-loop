@@ -6,7 +6,8 @@
  * 预览和实际不会各说各的。
  *
  * 动手的边界（和 check/guide 的只读不同，这是安装器）：
- * - 只写宿主的配置目录（~/.claude/skills、pi 的 settings），**不碰用户的仓库**。
+ * - 只写宿主自己的配置目录（~/.claude/skills、~/.codex/skills、~/.gemini/skills、
+ *   pi 的 settings），**不碰用户的仓库**，也不碰 ~/.agents/skills 那类跨宿主共享目录。
  * - 只新建软链。占着位置的东西一概不动——尤其不删真实目录，那可能是用户
  *   自己写的同名 skill。冲突交给人，安装器不替人做减法。
  */
@@ -144,7 +145,7 @@ export function runInit(args, { home = process.env.HOME, packageRoot, stdout, st
     return exit(EXIT_UNUSABLE);
   }
 
-  // --claude / --pi 限定宿主；都不给就是全部检测到的宿主。
+  // --claude / --codex / --gemini / --pi 限定宿主；都不给就是全部检测到的宿主。
   const only = HOST_IDS.filter((id) => args[id]);
   const plan = planInstall({ packageRoot, home, only });
 
