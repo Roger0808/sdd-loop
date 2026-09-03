@@ -6,10 +6,12 @@
  * 预览和实际不会各说各的。
  *
  * 动手的边界（和 check/guide 的只读不同，这是安装器）：
- * - 只写宿主自己的配置目录（~/.claude/skills、~/.codex/skills、~/.gemini/skills、
- *   pi 的 settings），**不碰用户的仓库**，也不碰 ~/.agents/skills 那类跨宿主共享目录。
+ * - 只写用户主目录下的 agent 落点（~/.claude/skills、~/.agents/skills、pi 的
+ *   settings），**不碰用户的仓库**。项目级的 skill/规则落点（.cline/skills、
+ *   .kilocode/rules 之类）一律不做——那是往用户的业务仓库里写东西。
  * - 只新建软链。占着位置的东西一概不动——尤其不删真实目录，那可能是用户
- *   自己写的同名 skill。冲突交给人，安装器不替人做减法。
+ *   自己写的同名 skill。冲突交给人，安装器不替人做减法。旧版留在品牌目录里的
+ *   软链也只报不删。
  */
 
 import fs from "node:fs";
@@ -89,6 +91,9 @@ export function renderPlan(plan, { applied = null } = {}) {
 
     if (host.kind === "symlink") {
       lines.push(`${host.label}  ${host.dir}`);
+      for (const served of host.serves ?? []) {
+        lines.push(`  · 服务 ${served.label}${served.note ? `（${served.note}）` : ""}`);
+      }
       for (const item of host.items) {
         const done = applied?.find((r) => r.host === host.id && r.name === item.name);
         if (done) {
@@ -119,6 +124,14 @@ export function renderPlan(plan, { applied = null } = {}) {
     lines.push("");
   }
 
+  if (plan.legacy?.length) {
+    lines.push("⚠️ 旧版落点还在。同一个 skill 同时留在品牌目录和共享落点里会被列两遍");
+    lines.push("   （实测宿主不去重），模型会看到两个同名 skill。这几条建议你自己删掉：");
+    for (const stale of plan.legacy) lines.push(`     rm ${stale.target}`);
+    lines.push("   安装器不替你删——万一那是你自己重建的。");
+    lines.push("");
+  }
+
   if (!cliOnPath()) {
     lines.push("⚠️ `sdd-loop` 不在 PATH 上。访谈过程中要用它查口径，缺了那一步是空的：");
     lines.push(`     cd ${plan.packageRoot} && npm link`);
@@ -145,7 +158,7 @@ export function runInit(args, { home = process.env.HOME, packageRoot, stdout, st
     return exit(EXIT_UNUSABLE);
   }
 
-  // --claude / --codex / --gemini / --pi 限定宿主；都不给就是全部检测到的宿主。
+  // --claude / --agents / --pi 限定落点；都不给就是全部检测到的落点。
   const only = HOST_IDS.filter((id) => args[id]);
   const plan = planInstall({ packageRoot, home, only });
 

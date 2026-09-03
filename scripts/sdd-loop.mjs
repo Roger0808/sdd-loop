@@ -17,18 +17,26 @@ import { runInit } from "./lib/init.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
 import { pickExample } from "../src/spec-guide/example.js";
+import { AGENTS_HOSTS } from "../src/install/plan.js";
 import { EXIT_OK, EXIT_CONTENT, EXIT_UNUSABLE } from "./lib/exit-codes.mjs";
+
+// 共享落点服务谁，从判定源里生成——手抄一份就等着「加了宿主帮助里没有」。
+const AGENTS_SERVED = AGENTS_HOSTS.map((h) => h.label).join(" / ");
 
 const HELP = `sdd-loop — SDD Loop 的两件仪器
 
 用法：
   sdd-loop check [--repo <dir>] [--status-file <path>] [--archive-dir <path>] [--json]
   sdd-loop guide [--type <doc.clause>] [--repo <dir>] [--docs-dir <path>] [--json]
-  sdd-loop init -g [--claude] [--codex] [--gemini] [--pi] [--show]
+  sdd-loop init -g [--claude] [--agents] [--pi] [--show]
 
-init -g：把本包装进这台机器的 agent 宿主（Claude Code / Codex / Gemini CLI 软链 skill，pi 登记本包）。
+init -g：把本包装进这台机器的 agent 宿主。三个落点：
+    --claude   ~/.claude/skills/   Claude Code（它不读共享目录）
+    --agents   ~/.agents/skills/   走 Agent Skills 开放标准的宿主共用这一份
+                                   ${AGENTS_SERVED}
+    --pi       pi 登记本包
   这是装**工具**，不是初始化仓库——初始化仓库是 sdd-init skill 的活。
-  不带宿主标志时装进所有检测到的宿主；没检测到的跳过并说明。
+  不带落点标志时装进所有检测到的落点；没检测到的跳过并说明。
   --show          只看要做什么，不动手
   绝不删任何已存在的文件或目录：位置被占着就报出来交给你。
 
@@ -51,7 +59,7 @@ guide：写之前给要求。「我要写这一类东西，该写哪几项」+ �
 
 // 布尔标志：不吃后面那个 token。少一个登记，`--show <子命令>` 就会把子命令
 // 当成 --show 的值吞掉，而且不报错——所以新加无值标志必须同时加进这里。
-const BOOLEAN_FLAGS = new Set(["json", "help", "global", "show", "claude", "codex", "gemini", "pi"]);
+const BOOLEAN_FLAGS = new Set(["json", "help", "global", "show", "claude", "agents", "pi"]);
 const SHORT_FLAGS = { "-h": "help", "-g": "global" };
 
 function parseArgs(argv) {

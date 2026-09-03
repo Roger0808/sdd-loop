@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Node-%E2%89%A520-brightgreen.svg" alt="Node >= 20">
-  <img src="https://img.shields.io/badge/宿主-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Gemini%20CLI%20%C2%B7%20pi-8A2BE2" alt="Hosts">
+  <img src="https://img.shields.io/badge/宿主-12%20个-8A2BE2" alt="Hosts">
 </p>
 
 <p align="center">
@@ -43,17 +43,30 @@ sdd-loop init -g
 
 `init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主,没检测到的跳过。
 
-| 宿主 | 单独安装 | 落点 | 初始化仓库 | 走访谈 |
-|---|---|---|---|---|
-| Claude Code | `sdd-loop init -g --claude` | 软链进 `~/.claude/skills/` | `/sdd-init` | `/sdd-interview` |
-| Codex | `sdd-loop init -g --codex` | 软链进 `~/.codex/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| Gemini CLI | `sdd-loop init -g --gemini` | 软链进 `~/.gemini/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| pi | `sdd-loop init -g --pi` | `pi install` 登记本包 | `/sdd init` | `/sdd` |
+| 宿主 | 落点 | 初始化仓库 | 走访谈 |
+|---|---|---|---|
+| Claude Code | `~/.claude/skills/` | `/sdd-init` | `/sdd-interview` |
+| Codex | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Gemini CLI | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| GitHub Copilot | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Cursor ⚠️ | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Windsurf | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| OpenCode | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Kimi Code | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Antigravity | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Factory Droid | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Roo Code | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| pi | `pi install` 登记本包 | `/sdd init` | `/sdd` |
 
-`sdd-loop check` 与 `sdd-loop guide` 四个宿主里敲法都一样;pi 里也可以用内置的 `sdd_loop_check` / `sdd_spec_guide` 工具。
+⚠️ Cursor 有多份「不跟进软链」的报告,本包正是软链装法——装上了也可能发现不了。
+
+`sdd-loop check` 与 `sdd-loop guide` 在哪个宿主里敲法都一样;pi 里也可以用内置的 `sdd_loop_check` / `sdd_spec_guide` 工具。
 
 ```bash
-sdd-loop init -g --show    # 只看要做什么，不动手
+sdd-loop init -g --claude   # 只装 ~/.claude/skills/
+sdd-loop init -g --agents   # 只装 ~/.agents/skills/（上表其余宿主共用这一份）
+sdd-loop init -g --pi       # 只登记进 pi
+sdd-loop init -g --show     # 只看要做什么，不动手
 ```
 
 重复跑是安全的:**绝不删任何已存在的文件或目录**。
