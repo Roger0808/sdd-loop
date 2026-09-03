@@ -1,12 +1,27 @@
-# sdd-loop
+<h1 align="center">sdd-loop</h1>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <strong>把「跟 AI 聊需求」变成一套能反复走、能查账的流程</strong>
+</p>
 
-**把「跟 AI 聊需求」变成一套能反复走、能查账的流程。**
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Node-%E2%89%A520-brightgreen.svg" alt="Node >= 20">
+  <img src="https://img.shields.io/badge/宿主-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Gemini%20CLI%20%C2%B7%20pi-8A2BE2" alt="Hosts">
+</p>
+
+<p align="center">
+  <a href="#安装">安装</a> &bull;
+  <a href="#快速开始">快速开始</a> &bull;
+  <a href="#命令">命令</a> &bull;
+  <a href="#七站访谈">七站访谈</a>
+</p>
+
+---
 
 一句话需求 → 七站访谈 → 四份规格文档 → 拆成任务 → 写代码 → 验证 → 关闭这一轮,再开下一轮。这一整圈叫一个 **Loop**。
 
-## 解决什么问题
+## 它解决什么
 
 | 你遇到的 | sdd-loop 做的 |
 |---|---|
@@ -18,7 +33,7 @@
 
 ## 安装
 
-三条命令,所有宿主一起装好:
+要求 Node ≥ 20。三条命令,所有宿主一起装好:
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -26,121 +41,66 @@ npm link
 sdd-loop init -g
 ```
 
-`npm link` 提供 `sdd-loop` 命令——访谈过程中要用它查口径,没有这条命令那一步就是空的。
-`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上**检测到的**宿主。没装的宿主自动跳过并说明理由。
+`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主:
 
-| 宿主 | 落点 | 怎么算「装了」 |
-|---|---|---|
-| Claude Code | 软链进 `~/.claude/skills/` | 有 `~/.claude/` 目录 |
-| Codex | 软链进 `~/.codex/skills/` | 有 `~/.codex/` 目录 |
-| Gemini CLI | 软链进 `~/.gemini/skills/` | PATH 上有 `gemini` 命令 |
-| pi | `pi install` 登记本包 | 有 `~/.pi/` 目录 |
+| 宿主 | 落点 |
+|---|---|
+| Claude Code | `~/.claude/skills/` |
+| Codex | `~/.codex/skills/` |
+| Gemini CLI | `~/.gemini/skills/` |
+| pi | `pi install` 登记本包 |
 
-> Gemini 刻意按命令判而不按目录判:`~/.gemini/` 不是 Gemini CLI 独占的(Antigravity IDE 也用它),按目录判会在没装 Gemini CLI 的机器上误报。
-
-> Codex 也会读跨宿主共享的 `~/.agents/skills/`,**本工具刻意不往那儿装**——一次写入会同时改掉好几个宿主看到的东西,超出了「装进检测到的宿主」这句话的范围。
-
-先看它要做什么,不动手:
+没检测到的宿主自动跳过并说明理由。想先看它要做什么:
 
 ```bash
 sdd-loop init -g --show
 ```
 
-`init -g` **绝不删任何已存在的文件或目录**。位置被别的东西占着(比如你自己写了个同名 skill),它报出来交给你,不替你做减法。重复跑是安全的。
-
-只想装一个宿主:`sdd-loop init -g --claude` / `--codex` / `--gemini` / `--pi`。
+只装一个宿主加 `--claude` / `--codex` / `--gemini` / `--pi`。重复跑是安全的:**绝不删任何已存在的文件或目录**,位置被别的东西占着就报出来交给你。
 
 装完**要重启宿主**才会加载到新 skill(Gemini 里也可以 `/skills reload`)。
 
 > pi 用户也可以不 clone,直接 `pi install git:github.com/Roger0808/sdd-loop`。代价是没有 `sdd-loop` 这条命令,查口径只能走 pi 的 `sdd_spec_guide` 工具。
 
-### 命令对照
+## 快速开始
 
-| 做什么 | Claude Code | Codex | Gemini CLI | pi |
-|---|---|---|---|---|
-| 把本包装进宿主(每台机器一次) | `sdd-loop init -g` | 同左 | 同左 | 同左 |
-| 初始化仓库(每个仓库一次) | `/sdd-init` | 说「初始化 SDD」 | 说「初始化 SDD」 | `/sdd init` |
-| 走访谈 | `/sdd-interview` | 说「走 SDD 访谈」 | 说「走 SDD 访谈」 | `/sdd` |
-| 状态对账 | `sdd-loop check` | `sdd-loop check` | `sdd-loop check` | `sdd_loop_check` 工具 |
-| 查条款口径 | `sdd-loop guide --type <类型>` | 同左 | 同左 | `sdd_spec_guide` 工具 |
+**1. 初始化仓库**(每个仓库一次)
 
-**Codex 与 Gemini 没有斜杠命令这一列不是漏写。** 这两家的 skill 都由模型按 `description` 匹配后自己激活,不是你敲 `/sdd-init` 触发的——所以那两格写的是「你说什么」。Gemini 里 `/skills list` 可以确认它发现了这两个 skill;Codex 里 `codex debug prompt-input` 能看到注入给模型的 skill 清单。
+在你的项目里让 agent 加载 sdd-init:Claude Code 敲 `/sdd-init`,pi 敲 `/sdd init`,Codex / Gemini 直接说「初始化 SDD」。
 
-**`sdd-loop init -g` 和 `/sdd-init` 是两件事**,名字像但别混:前者装工具(每台机器一次),后者初始化一个仓库(每个仓库一次)。`sdd-loop init` 不带 `-g` 会直接告诉你这一点,不会瞎猜。
+生成 `AGENTS.md`(门禁规则)、`CLAUDE.md`、`docs/loops/status.md`。只建结构,不写任何业务内容。**别删 `AGENTS.md`** —— 状态对账执行的就是它里面那条门禁规则。
 
-要求 Node ≥ 20。
+**2. 走一轮访谈**
 
-## 怎么用
+`/sdd-interview`(pi 里 `/sdd`,Codex / Gemini 说「走 SDD 访谈」)。带你走完[七站](#七站访谈),产出四份文档。
 
-**第一次用(每个仓库一次)**
+也可以是「我已经有一份 PRD,帮我整理成 SDD」—— 大纲照走,每一站的内容先从原文里找,原文没有的照样要问你。
 
-```
-/sdd-init
-```
-
-在你的项目仓库里生成 `AGENTS.md`(门禁规则)、`CLAUDE.md`、`docs/loops/status.md`。只建结构,不写任何业务内容。
-
-> `AGENTS.md` 是承重墙。状态对账执行的就是它里面那条「状态文件、活跃目录和阶段文档互相矛盾时,应停止相关工作并请求用户确认」。**没有它,对账是在检查一个仓库从没声明过的约定。**
-
-**开始一轮 Loop**
-
-```
-/sdd-interview
-```
-
-带你走完七站,产出四份文档。也可以是「我已经有一份 PRD,帮我整理成 SDD」——大纲照走,每一站的内容先从原文里找,**原文没有的照样要问你**。
-
-**每轮开工先对账**
+**3. 每轮开工先对账**
 
 ```bash
 sdd-loop check
 ```
 
-退出码是契约:`0` 干净 / `1` 声明与事实矛盾 / `2` 判据读不出来。
+> `sdd-loop init -g` 和 `/sdd-init` 是两件事,名字像但别混:前者装工具(每台机器一次),后者初始化一个仓库(每个仓库一次)。
 
-## 七站访谈
+## 命令
 
-七站问完产出四份文档。**每一站的产出立刻落盘**,`status: draft` 起步,你确认后才改成 `confirmed`——确认是人的动作,AI 不代办。
+### `sdd-loop check` — 状态对账
 
-| 站 | 问什么 | 解决什么问题 | 落到哪 |
-|---|---|---|---|
-| **0 · 需求起点与公司背景** | 一句话需求、产品名、目标业务域、成功标准、行业、发展阶段、经营模式、业务规模、当前用什么工具、当前痛点、一期目标、本期不做 | **AI 不知道你是谁、在什么行业、什么规模。** 同一句需求,给三人团队和给三百人公司做出来是两个东西。这一站全靠问,代码里查不到 | requirements.md<br>背景 / 目标 / 非目标 / 成功标准 |
-| **1 · 业务上下文** | 现在这事怎么跑、谁参与、卡在哪、一期闭环到哪、边界在哪 | **划清「这轮做什么、不做什么」。** 不写非目标,范围会在开发中途悄悄膨胀 | requirements.md<br>用户场景 / 范围 |
-| **2 · 系统骨架** | 模块怎么分、核心实体与关系、业务单据、共享机制、技术选型、外部系统怎么接 | **让技术决策留下痕迹。** 每条结论标明是「已确认约束」「已验证事实」「候选方案」还是「待决问题」——分不清这四类,后面没人知道哪些能改 | architecture.md<br>模块边界 / 技术决策 / 集成边界 |
-| **3 · 场景粗流程推演** | 端到端主流程、关键场景、异常分支、审批流 | **把「正常情况怎么走」写成能验证的东西。** 异常分支尤其容易漏——这一站要对着真实接口的报错语义写,不是想当然 | specification.md<br>主流程 / 异常分支 / 审批流 |
-| **4 · 字段清单与业务规则** | 有哪些单据/对象、每个字段(控件、取值、必填、在哪个页面)、状态机、每个状态谁能做什么、业务规则 | **这一站最容易返工。** 字段和状态没定清楚,后面页面、接口、测试全要重来 | specification.md<br>实体与字段表 / 状态机 / 权限矩阵 / 行为条款 |
-| **5 · 用例数据推演** | 样例主数据、样例单据、事件序列、测试用例 | **拿具体数据把前面的规则跑一遍。** 抽象规则看着都对,填进真实数据才发现矛盾 | specification.md<br>用例(数据 + 事件 + 预期) |
-| **6 · 页面规格** | 页面清单、关键交互、校验点、列表/表单/弹窗行为、非功能要求 | **把界面行为写成可验收的条款**,而不是等做出来再说「不是这个意思」 | specification.md 页面行为<br>requirements.md 非功能要求 |
-
-**收官:拆任务**(不是提问站)。前七站靠问,这一步靠读代码——不知道代码现状拆出来的任务是编的。产出 `tasks.md`:每条任务写编号、引用的需求/架构/规格编号、完成条件、验证方法。
-
-之后 implementation 与 verification 两个阶段由 coding agent 按 `AGENTS.md` 的门禁走。
-
-### 一条硬规矩
-
-访谈只能得到你脑子里的东西。代码现状、接口错误语义、运行环境,**必须去读代码**;读不到就在文档里标「待勘察」。
-
-抽不出来要明说。编出来的结论会被后续流程当成高级别事实用——说「这条我查不到」是诚实答案,编一个是污染真相源。
-
-## 两件仪器
-
-### 状态对账 `sdd-loop check`
-
-每轮开工跑一次,把状态文件的**声明**和文件里的**事实**摆在一起比:
-
-- front-matter 读不读得出来(冲突标记、重复键、未闭合都算读不出来)
-- `activeLoop` 指的目录是不是空的(悬空指针)
-- 已关闭 Loop 的阶段文档是否全部归档
-- 当前卡在哪道门禁、下一步该做什么
+把状态文件的**声明**和文件里的**事实**摆在一起比:front-matter 读不读得出来、`activeLoop` 指的目录是不是空的、已关闭 Loop 的阶段文档是否全部归档、当前卡在哪道门禁。
 
 ```bash
 sdd-loop check                    # 当前仓库
 sdd-loop check --repo <dir>       # 指定仓库
+sdd-loop check --json             # 机器可读
 ```
 
-**只读。** 不替你改状态、不解冲突、不归档、不重命名文件——矛盾由人解决。
+退出码是契约:`0` 干净 / `1` 声明与事实矛盾 / `2` 判据读不出来。
 
-### 口径字典 `sdd-loop guide`
+**只读。** 不替你改状态、不解冲突、不归档、不重命名文件 —— 矛盾由人解决。
+
+### `sdd-loop guide` — 口径字典
 
 **写之前**查,不做事后判定。告诉你这类条款该写哪几项、本仓库现有编号族(新增沿用同族前缀)、一条参考写法。
 
@@ -162,13 +122,44 @@ sdd-loop guide --type specification.entity-table
 
 </details>
 
+### 各宿主怎么触发
+
+| 做什么 | Claude Code | Codex | Gemini CLI | pi |
+|---|---|---|---|---|
+| 初始化仓库 | `/sdd-init` | 说「初始化 SDD」 | 说「初始化 SDD」 | `/sdd init` |
+| 走访谈 | `/sdd-interview` | 说「走 SDD 访谈」 | 说「走 SDD 访谈」 | `/sdd` |
+| 状态对账 | `sdd-loop check` | `sdd-loop check` | `sdd-loop check` | `sdd_loop_check` 工具 |
+| 查条款口径 | `sdd-loop guide --type <类型>` | 同左 | 同左 | `sdd_spec_guide` 工具 |
+
+Codex 与 Gemini 的 skill 由模型按描述自己激活,没有斜杠命令,所以那两格写的是「你说什么」。
+
+## 七站访谈
+
+七站问完产出四份文档。**每一站的产出立刻落盘**,`status: draft` 起步,你确认后才改成 `confirmed` —— 确认是人的动作,AI 不代办。
+
+| 站 | 问什么 | 落到哪 |
+|---|---|---|
+| **0 · 需求起点与公司背景** | 一句话需求、产品名、目标业务域、成功标准、行业、发展阶段、经营模式、业务规模、当前用什么工具、当前痛点、一期目标、本期不做 | requirements.md<br>背景 / 目标 / 非目标 / 成功标准 |
+| **1 · 业务上下文** | 现在这事怎么跑、谁参与、卡在哪、一期闭环到哪、边界在哪 | requirements.md<br>用户场景 / 范围 |
+| **2 · 系统骨架** | 模块怎么分、核心实体与关系、业务单据、共享机制、技术选型、外部系统怎么接 | architecture.md<br>模块边界 / 技术决策 / 集成边界 |
+| **3 · 场景粗流程推演** | 端到端主流程、关键场景、异常分支、审批流 | specification.md<br>主流程 / 异常分支 / 审批流 |
+| **4 · 字段清单与业务规则** | 有哪些单据/对象、每个字段(控件、取值、必填、在哪个页面)、状态机、每个状态谁能做什么、业务规则 | specification.md<br>实体与字段表 / 状态机 / 权限矩阵 / 行为条款 |
+| **5 · 用例数据推演** | 样例主数据、样例单据、事件序列、测试用例 | specification.md<br>用例(数据 + 事件 + 预期) |
+| **6 · 页面规格** | 页面清单、关键交互、校验点、列表/表单/弹窗行为、非功能要求 | specification.md 页面行为<br>requirements.md 非功能要求 |
+
+**收官:拆任务**(不是提问站)。前面靠问,这一步靠读代码。产出 `tasks.md`:每条任务写编号、引用的需求/架构/规格编号、完成条件、验证方法。
+
+之后 implementation 与 verification 两个阶段由 coding agent 按 `AGENTS.md` 的门禁走。
+
+> 访谈只能得到你脑子里的东西。代码现状、接口错误语义、运行环境**必须去读代码**;读不到就在文档里标「待勘察」,**不许编** —— 编出来的结论会被后续流程当成高级别事实用。
+
 ## 文件长什么样
 
-`/sdd-init` 之后:
+初始化之后:
 
 ```
 你的项目/
-├── AGENTS.md              # 门禁规则(承重墙)
+├── AGENTS.md              # 门禁规则
 ├── CLAUDE.md              # 转引 AGENTS.md
 └── docs/
     ├── loops/
@@ -181,7 +172,7 @@ sdd-loop guide --type specification.entity-table
     └── archive/           # 关闭的 Loop 挪到这
 ```
 
-路径是**默认值不是前提**。目录约定不同,用 `--status-file` / `--archive-dir` 指过去,或改 `src/loop/convention.js`。字段名(`activeLoop` 等)是定死的。
+路径是默认值:目录约定不同,用 `sdd-loop check --status-file <path>` / `--archive-dir <path>` 指过去。
 
 ## 许可
 
