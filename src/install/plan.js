@@ -17,12 +17,54 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * 宿主表。加新宿主（Codex / Gemini …）就往这里加一项，
+ * 宿主表。加新宿主（Codex …）就往这里加一项，
  * CLI 与测试都从这张表推导，不枚举 id。
  */
-export const HOST_IDS = ["claude", "pi"];
+export const HOST_IDS = ["claude", "gemini", "pi"];
 
-const HOST_LABEL = { claude: "Claude Code", pi: "pi" };
+const HOST_LABEL = { claude: "Claude Code", gemini: "Gemini CLI", pi: "pi" };
+
+/**
+ * 走「软链进宿主的 skills 目录」这条路的宿主。
+ *
+ * **两个宿主的检测信号刻意不一样，别统一。**
+ * Claude Code 按 `~/.claude` 在不在判；Gemini 必须按 `gemini` 二进制在不在
+ * PATH 上判，因为 `~/.gemini/` 不是 Gemini CLI 独占的——Antigravity IDE 也用
+ * 这个目录（实测：一台没装 Gemini CLI 的机器上 `~/.gemini/GEMINI.md` 和
+ * settings.json 都在）。按目录判会在这类机器上误报「装了」，然后凭空建出一个
+ * `~/.gemini/skills/`。假警报比漏报更致命，这里宁可漏。
+ */
+const SKILLS_DIR_HOSTS = {
+  claude: {
+    configDir: (home) => path.join(home, ".claude"),
+    skillsDir: (home) => path.join(home, ".claude", "skills"),
+    detect: (home) =>
+      fs.existsSync(path.join(home, ".claude"))
+        ? null
+        : `没有 ${path.join(home, ".claude")}——这台机器上看不到 Claude Code`,
+  },
+  gemini: {
+    skillsDir: (home) => path.join(home, ".gemini", "skills"),
+    detect: (home, env) =>
+      binOnPath("gemini", env)
+        ? null
+        : "PATH 上没有 gemini 命令——这台机器上看不到 Gemini CLI（只有 ~/.gemini/ 目录不算，Antigravity 也用它）",
+  },
+};
+
+/** 某个可执行文件在不在 PATH 上。 */
+export function binOnPath(name, env = process.env) {
+  for (const dir of (env.PATH || "").split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, name), fs.constants.X_OK);
+      return true;
+    } catch {
+      /* 下一个 */
+    }
+  }
+  return false;
+}
 
 /** 单个 skill 在 Claude Code 那边的落点状态。 */
 const ITEM_READY = "ready"; // 该建，目标位置空着
@@ -62,14 +104,13 @@ function linksTo(target, source) {
   }
 }
 
-function planClaude({ home, skills }) {
-  const configDir = path.join(home, ".claude");
-  const skillsDir = path.join(configDir, "skills");
-  const host = { id: "claude", label: HOST_LABEL.claude, kind: "symlink", dir: skillsDir };
+function planSkillsDir(id, { home, skills, env }) {
+  const spec = SKILLS_DIR_HOSTS[id];
+  const skillsDir = spec.skillsDir(home);
+  const host = { id, label: HOST_LABEL[id], kind: "symlink", dir: skillsDir };
 
-  if (!fs.existsSync(configDir)) {
-    return { ...host, detected: false, reason: `没有 ${configDir}——这台机器上看不到 Claude Code`, items: [] };
-  }
+  const reason = spec.detect(home, env);
+  if (reason) return { ...host, detected: false, reason, items: [] };
 
   const items = skills.map((skill) => {
     const target = path.join(skillsDir, skill.name);
@@ -130,8 +171,9 @@ function planPi({ home, packageRoot }) {
  * @param {string} options.packageRoot 本包所在目录（软链的源、pi install 的参数）
  * @param {string} options.home        用户主目录
  * @param {string[]} [options.only]    只算这几个宿主，缺省是全部
+ * @param {object} [options.env]       环境变量（Gemini 靠 PATH 检测，测试要能控）
  */
-export function planInstall({ packageRoot, home, only }) {
+export function planInstall({ packageRoot, home, only, env = process.env }) {
   const wanted = only?.length ? HOST_IDS.filter((id) => only.includes(id)) : HOST_IDS;
   const skills = readPackagedSkills(packageRoot);
 
@@ -150,7 +192,7 @@ export function planInstall({ packageRoot, home, only }) {
   }
 
   const hosts = wanted.map((id) =>
-    id === "claude" ? planClaude({ home, skills }) : planPi({ home, packageRoot }),
+    SKILLS_DIR_HOSTS[id] ? planSkillsDir(id, { home, skills, env }) : planPi({ home, packageRoot }),
   );
 
   return { packageRoot, home, skills, hosts, unusable: null };

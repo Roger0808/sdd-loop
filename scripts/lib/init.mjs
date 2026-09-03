@@ -15,24 +15,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
-import { planInstall, hasWork, hasConflict, noHostDetected, HOST_IDS, ITEM_STATES } from "../../src/install/plan.js";
+import {
+  planInstall,
+  hasWork,
+  hasConflict,
+  noHostDetected,
+  binOnPath,
+  HOST_IDS,
+  ITEM_STATES,
+} from "../../src/install/plan.js";
 import { EXIT_OK, EXIT_CONTENT, EXIT_UNUSABLE } from "./exit-codes.mjs";
 
 const { ITEM_READY, ITEM_ALREADY, ITEM_OCCUPIED } = ITEM_STATES;
 
 /** `sdd-loop` 在不在 PATH 上。不在的话 skill 装了也查不了口径。 */
-export function cliOnPath(env = process.env) {
-  for (const dir of (env.PATH || "").split(path.delimiter)) {
-    if (!dir) continue;
-    try {
-      fs.accessSync(path.join(dir, "sdd-loop"), fs.constants.X_OK);
-      return true;
-    } catch {
-      /* 下一个 */
-    }
-  }
-  return false;
-}
+export const cliOnPath = (env = process.env) => binOnPath("sdd-loop", env);
 
 /**
  * 照计划动手。只处理 ready 的项，其余原样返回。

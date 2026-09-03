@@ -37,9 +37,22 @@ function fakeHome({ claude = true, pi = true, piPackages } = {}) {
   return home;
 }
 
-const planFor = (home, only) => planInstall({ packageRoot: REPO_ROOT, home, only });
+// env 必须显式给：Gemini 靠 PATH 上有没有 gemini 判断，不控 PATH 的话
+// 「装了 gemini 的开发机」和「没装的」会跑出两种结果——测试就不是判据了。
+const planFor = (home, only, env = { PATH: "" }) =>
+  planInstall({ packageRoot: REPO_ROOT, home, only, env });
+
+/** 造一个假 PATH，里面放一个可执行的同名文件，冒充某个 CLI 装好了。 */
+function pathWith(binName) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-bin-"));
+  const bin = path.join(dir, binName);
+  fs.writeFileSync(bin, "#!/bin/sh\n");
+  fs.chmodSync(bin, 0o755);
+  return dir;
+}
 const claudeHost = (plan) => plan.hosts.find((h) => h.id === "claude");
 const piHost = (plan) => plan.hosts.find((h) => h.id === "pi");
+const geminiHost = (plan) => plan.hosts.find((h) => h.id === "gemini");
 
 // ---------------------------------------------------------------- 装得上
 
@@ -196,6 +209,85 @@ test("一个宿主都没有：说清楚什么也没做，退出码 2", () => {
   assert.match(res.stdout, /一个宿主都没检测到/);
 });
 
+// ---------------------------------------------------------------- Gemini
+
+test("Gemini 按 PATH 上有没有 gemini 判，不按 ~/.gemini/ 在不在判", () => {
+  // 实测的假阳性：Antigravity IDE 也用 ~/.gemini/，一台没装 Gemini CLI 的机器上
+  // 这个目录连同 GEMINI.md、settings.json 都在。按目录判会说「装了」。
+  const home = fakeHome({ claude: false, pi: false });
+  fs.mkdirSync(path.join(home, ".gemini"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".gemini", "GEMINI.md"), "别的工具写的");
+
+  const host = geminiHost(planFor(home));
+  assert.equal(host.detected, false, "只有 ~/.gemini/ 目录不能算 Gemini CLI 装了");
+  assert.match(host.reason, /PATH/, "得说清楚判据是 PATH，否则用户不知道怎么让它认出来");
+
+  applyPlan(planFor(home));
+  assert.equal(
+    fs.existsSync(path.join(home, ".gemini", "skills")),
+    false,
+    "没检测到就不该在别人的目录里凭空建出 skills/",
+  );
+});
+
+test("Gemini 装了：两个 skill 软链进 ~/.gemini/skills/", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const env = { PATH: pathWith("gemini") };
+
+  const plan = planFor(home, null, env);
+  const host = geminiHost(plan);
+  assert.equal(host.detected, true, "PATH 上有 gemini 就该认出来");
+  assert.equal(host.dir, path.join(home, ".gemini", "skills"), "落点是 Gemini 的用户级 skills 目录");
+  assert.equal(host.items.length, 2);
+
+  assert.ok(applyPlan(plan).every((r) => r.ok));
+
+  for (const item of host.items) {
+    assert.ok(fs.lstatSync(item.target).isSymbolicLink());
+    assert.ok(
+      fs.existsSync(path.join(item.target, "SKILL.md")),
+      `顺着软链要读得到 ${item.name} 的 SKILL.md——Gemini 认的是 Agent Skills 标准的 SKILL.md`,
+    );
+  }
+  assert.equal(hasWork(planFor(home, null, env)), false, "装完就该没活了");
+});
+
+test("不越权对 Gemini 一样成立：占位的真实目录动手之后内容还在", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const env = { PATH: pathWith("gemini") };
+  const mine = path.join(home, ".gemini", "skills", "sdd-interview");
+  fs.mkdirSync(mine, { recursive: true });
+  fs.writeFileSync(path.join(mine, "SKILL.md"), "我自己写的，别动");
+
+  const plan = planFor(home, null, env);
+  assert.equal(geminiHost(plan).items.find((i) => i.name === "sdd-interview").state, "occupied");
+
+  applyPlan(plan);
+  assert.equal(fs.readFileSync(path.join(mine, "SKILL.md"), "utf8"), "我自己写的，别动");
+});
+
+test("两个 skills-dir 宿主各装各的，互不影响", () => {
+  const home = fakeHome({ pi: false });
+  const env = { PATH: pathWith("gemini") };
+  applyPlan(planFor(home, null, env));
+
+  for (const dir of [path.join(home, ".claude", "skills"), path.join(home, ".gemini", "skills")]) {
+    assert.deepEqual(fs.readdirSync(dir).sort(), ["sdd-init", "sdd-interview"], `${dir} 没装齐`);
+  }
+});
+
+test("我们的 SKILL.md front-matter 满足 Agent Skills 标准（name + description）", () => {
+  // Gemini 与 Claude Code 都按这个标准发现 skill：缺 name/description 就不会被发现，
+  // 而且不会报错——装是装上了，用的时候找不到，最难查。
+  for (const rel of readPackagedSkills(REPO_ROOT).map((s) => s.source)) {
+    const text = fs.readFileSync(path.join(rel, "SKILL.md"), "utf8");
+    const fm = text.match(/^---\n([\s\S]*?)\n---/);
+    assert.ok(fm, `${path.basename(rel)}/SKILL.md 没有 front-matter`);
+    assert.match(fm[1], /^name:\s*\S+/m, `${path.basename(rel)} 缺 name`);
+    assert.match(fm[1], /^description:\s*\S+/m, `${path.basename(rel)} 缺 description`);
+  }
+});
+
 // ---------------------------------------------------------------- CLI 表面
 
 test("init 不带 -g 时不猜：指向 sdd-init skill，退出码 2", () => {
@@ -212,11 +304,21 @@ test("--show 的退出码可用于脚本判断：装好了 0，没装好 1", () 
   assert.equal(spawnCli(["init", "-g", "--show"], empty).status, 0, "装好了该是 0");
 });
 
-test("--claude / --pi 限定宿主：只算被点名的那个", () => {
+test("宿主标志限定范围：只算被点名的那个", () => {
   const home = fakeHome();
-  assert.deepEqual(planFor(home, ["claude"]).hosts.map((h) => h.id), ["claude"]);
-  assert.deepEqual(planFor(home, ["pi"]).hosts.map((h) => h.id), ["pi"]);
+  for (const id of HOST_IDS) {
+    assert.deepEqual(planFor(home, [id]).hosts.map((h) => h.id), [id], `--${id} 应该只算 ${id}`);
+  }
   assert.deepEqual(planFor(home).hosts.map((h) => h.id), HOST_IDS, "不点名就是全部宿主");
+});
+
+test("每个宿主都有对应的 CLI 标志——加了宿主忘了加标志，用户点不到它", () => {
+  const cli = fs.readFileSync(path.join(REPO_ROOT, "scripts/sdd-loop.mjs"), "utf8");
+  const flags = cli.match(/const BOOLEAN_FLAGS = new Set\(\[([^\]]*)\]\)/);
+  assert.ok(flags, "解析不出 BOOLEAN_FLAGS，这条锁就空了");
+  for (const id of HOST_IDS) {
+    assert.ok(flags[1].includes(`"${id}"`), `HOST_IDS 里有 ${id}，但 CLI 没登记 --${id}`);
+  }
 });
 
 test("布尔标志不吞掉后面的 token（--show 之后还能跟别的参数）", () => {
@@ -241,8 +343,9 @@ test("cliOnPath：PATH 上有可执行的 sdd-loop 才算数", () => {
 
 // 必须用 spawnSync：execFileSync 在非零退出时抛异常，而这里好几条锁验的
 // 正是非零退出码——用 execFileSync 会把「退出码对不对」变成「有没有抛」。
-function spawnCli(args, home) {
-  const env = { ...process.env };
+function spawnCli(args, home, pathDir = "") {
+  const env = { ...process.env, PATH: pathDir };
   if (home) env.HOME = home;
-  return spawnSync("node", [CLI, ...args], { encoding: "utf8", env });
+  // 用 process.execPath 而不是 "node"：PATH 被清空后 "node" 就找不到了。
+  return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", env });
 }

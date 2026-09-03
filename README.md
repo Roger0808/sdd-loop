@@ -18,7 +18,7 @@
 
 ## 安装
 
-三条命令,Claude Code 和 pi 一起装好:
+三条命令,所有宿主一起装好:
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -27,7 +27,15 @@ sdd-loop init -g
 ```
 
 `npm link` 提供 `sdd-loop` 命令——访谈过程中要用它查口径,没有这条命令那一步就是空的。
-`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上**检测到的**宿主:Claude Code 软链进 `~/.claude/skills/`,pi 登记本包。没装的宿主自动跳过。
+`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上**检测到的**宿主。没装的宿主自动跳过并说明理由。
+
+| 宿主 | 落点 | 怎么算「装了」 |
+|---|---|---|
+| Claude Code | 软链进 `~/.claude/skills/` | 有 `~/.claude/` 目录 |
+| Gemini CLI | 软链进 `~/.gemini/skills/` | PATH 上有 `gemini` 命令 |
+| pi | `pi install` 登记本包 | 有 `~/.pi/` 目录 |
+
+> Gemini 刻意按命令判而不按目录判:`~/.gemini/` 不是 Gemini CLI 独占的(Antigravity IDE 也用它),按目录判会在没装 Gemini CLI 的机器上误报。
 
 先看它要做什么,不动手:
 
@@ -37,19 +45,23 @@ sdd-loop init -g --show
 
 `init -g` **绝不删任何已存在的文件或目录**。位置被别的东西占着(比如你自己写了个同名 skill),它报出来交给你,不替你做减法。重复跑是安全的。
 
-只想装一个宿主:`sdd-loop init -g --claude` 或 `--pi`。
+只想装一个宿主:`sdd-loop init -g --claude` / `--gemini` / `--pi`。
+
+装完**要重启宿主**才会加载到新 skill(Gemini 里也可以 `/skills reload`)。
 
 > pi 用户也可以不 clone,直接 `pi install git:github.com/Roger0808/sdd-loop`。代价是没有 `sdd-loop` 这条命令,查口径只能走 pi 的 `sdd_spec_guide` 工具。
 
 ### 命令对照
 
-| 做什么 | Claude Code | pi |
-|---|---|---|
-| 把本包装进宿主(每台机器一次) | `sdd-loop init -g` | `sdd-loop init -g` |
-| 初始化仓库(每个仓库一次) | `/sdd-init` | `/sdd init` |
-| 走访谈 | `/sdd-interview` | `/sdd` |
-| 状态对账 | `sdd-loop check` | `sdd_loop_check` 工具 |
-| 查条款口径 | `sdd-loop guide --type <类型>` | `sdd_spec_guide` 工具 |
+| 做什么 | Claude Code | Gemini CLI | pi |
+|---|---|---|---|
+| 把本包装进宿主(每台机器一次) | `sdd-loop init -g` | 同左 | 同左 |
+| 初始化仓库(每个仓库一次) | `/sdd-init` | 说「初始化 SDD」 | `/sdd init` |
+| 走访谈 | `/sdd-interview` | 说「走 SDD 访谈」 | `/sdd` |
+| 状态对账 | `sdd-loop check` | `sdd-loop check` | `sdd_loop_check` 工具 |
+| 查条款口径 | `sdd-loop guide --type <类型>` | 同左 | `sdd_spec_guide` 工具 |
+
+**Gemini 没有斜杠命令这一列不是漏写。** 它的 skill 由模型按 `description` 匹配后自己激活(会弹确认框),不是你敲 `/sdd-init` 触发的——所以那一格写的是「你说什么」。`/skills list` 可以确认它发现了这两个 skill。
 
 **`sdd-loop init -g` 和 `/sdd-init` 是两件事**,名字像但别混:前者装工具(每台机器一次),后者初始化一个仓库(每个仓库一次)。`sdd-loop init` 不带 `-g` 会直接告诉你这一点,不会瞎猜。
 
