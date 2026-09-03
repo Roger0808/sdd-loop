@@ -51,6 +51,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd`（访谈）与 `/sdd init`（初始化）两条路径。全只读——写文件的是 agent，不是工具。 |
 | Skill · init | `skills/sdd-init/` | SKILL.md + `AGENTS.md.template` / `CLAUDE.md.template`。模板不用真名：skill 目录会被软链进 `~/.claude/skills/`，真名会被宿主当成生效的规则文件读走。 |
 | Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编） |
+| 首页 | `README.md`（英文，默认）+ `README_zh.md`（简体中文） | **改一份必须改另一份**。`tests/readme.test.js` 对两份跑同一批锁，数字与名字（站数 / 条款类型 / 宿主 / 子命令）一律从真相源推导，只有「用什么写法表达这个数」按语言分 |
 
 ## 红线（复审时盯这些）
 

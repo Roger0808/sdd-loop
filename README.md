@@ -1,39 +1,44 @@
 <h1 align="center">sdd-loop</h1>
 
 <p align="center">
-  <strong>把「跟 AI 聊需求」变成一套能反复走、能查账的流程</strong>
+  <strong>Turn "talking to an AI about requirements" into a process you can repeat and audit</strong>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Node-%E2%89%A520-brightgreen.svg" alt="Node >= 20">
-  <img src="https://img.shields.io/badge/宿主-12%20个-8A2BE2" alt="Hosts">
+  <img src="https://img.shields.io/badge/hosts-12-8A2BE2" alt="Hosts">
 </p>
 
 <p align="center">
-  <a href="#安装">安装</a> &bull;
-  <a href="#快速开始">快速开始</a> &bull;
-  <a href="#命令">命令</a> &bull;
-  <a href="#七站访谈">七站访谈</a>
+  <a href="#installation">Install</a> &bull;
+  <a href="#quick-start">Quick start</a> &bull;
+  <a href="#commands">Commands</a> &bull;
+  <a href="#the-7-station-interview">Interview</a>
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> &bull;
+  <a href="README_zh.md">简体中文</a>
 </p>
 
 ---
 
-一句话需求 → 七站访谈 → 四份规格文档 → 拆成任务 → 写代码 → 验证 → 关闭这一轮,再开下一轮。这一整圈叫一个 **Loop**。
+One-line request → 7-station interview → four spec documents → task breakdown → code → verification → close this round, open the next. One full turn around that circle is a **Loop**.
 
-## 它解决什么
+## What it fixes
 
-| 你遇到的 | sdd-loop 做的 |
+| What you hit | What it does |
 |---|---|
-| 让 AI 写需求文档,它编得头头是道,但一半是猜的 | 强制区分「问出来的」「读代码查到的」「还不知道的」。查不到就标「待勘察」,**不许编** |
-| 第一版做完了,不知道第二轮从哪儿接 | 状态文件记着走到哪一步。开工先跑一次对账,声明和事实对不上就停下 |
-| 文档写着「已完成」,代码里根本没有 | 把状态文件的**声明**和文件里的**事实**摆一起比,不一致直接列出来 |
-| 每次写条款格式都不一样,编号也对不上 | 写之前查口径:这类条款该写哪几项、本仓库已有哪些编号族 |
-| 聊到一半 AI 忘了前面说过什么 | 每一站的产出立刻落盘成文档,不靠对话记忆 |
+| Ask an AI to write a requirements doc and it sounds authoritative, but half of it is guessed | Forces a split between "asked and answered", "found in the code", and "still unknown". If it can't be found, it's marked *to be investigated* — **never invented** |
+| First version shipped, no idea where round two picks up | The status file records where you stopped. Reconcile before you start; if the claims and the files disagree, stop |
+| A doc says "done" and the code has nothing of the sort | Puts the status file's **claims** next to the **facts** on disk and lists every mismatch |
+| Every clause comes out in a different shape, and the IDs don't line up | Look up the requirements before writing: which items this kind of clause needs, and which ID families this repo already uses |
+| Halfway through the chat the AI forgets what was agreed | Each station's output lands on disk right away — nothing depends on conversation memory |
 
-## 安装
+## Installation
 
-要求 Node ≥ 20。三条命令,所有宿主一起装好:
+Requires Node ≥ 20. Three commands install into every host on this machine:
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -41,135 +46,135 @@ npm link
 sdd-loop init -g
 ```
 
-`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主,没检测到的跳过。下表 10 个走 Agent Skills 开放标准的宿主**共用同一份软链**——装一次,它们都发现得到。
+`init -g` links `skills/sdd-init` and `skills/sdd-interview` into the hosts it detects and skips the ones it doesn't. The 10 hosts below that follow the Agent Skills open standard **share a single symlink** — install once and all of them find it.
 
-| 宿主 | 落点 | 初始化仓库 | 走访谈 |
+| Host | Install path | Init a repo | Run the interview |
 |---|---|---|---|
 | Claude Code | `~/.claude/skills/` | `/sdd-init` | `/sdd-interview` |
-| Codex | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| Gemini CLI | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| GitHub Copilot | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| Cursor ⚠️ | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| Windsurf | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| OpenCode | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| Kimi Code | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| Antigravity | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| Factory Droid | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| Roo Code | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
-| pi | `pi install` 登记本包 | `/sdd init` | `/sdd` |
+| Codex | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| Gemini CLI | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| GitHub Copilot | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| Cursor ⚠️ | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| Windsurf | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| OpenCode | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| Kimi Code | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| Antigravity | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| Factory Droid | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| Roo Code | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| pi | `pi install` registers the package | `/sdd init` | `/sdd` |
 
-⚠️ Cursor 有多份「不跟进软链」的报告,本包正是软链装法——装上了也可能发现不了。
+⚠️ Cursor has several reports of not following symlinks, and symlinks are exactly how this package installs — it may not be discovered there.
 
-`sdd-loop check` 与 `sdd-loop guide` 在哪个宿主里敲法都一样;pi 里也可以用内置的 `sdd_loop_check` / `sdd_spec_guide` 工具。
+`sdd-loop check` and `sdd-loop guide` are typed the same way in every host; pi also ships them as the built-in `sdd_loop_check` / `sdd_spec_guide` tools.
 
 ```bash
-sdd-loop init -g --claude   # 只装 ~/.claude/skills/
-sdd-loop init -g --agents   # 只装 ~/.agents/skills/（上表其余宿主共用这一份）
-sdd-loop init -g --pi       # 只登记进 pi
-sdd-loop init -g --show     # 只看要做什么，不动手
+sdd-loop init -g --claude   # only ~/.claude/skills/
+sdd-loop init -g --agents   # only ~/.agents/skills/ (shared by the other hosts above)
+sdd-loop init -g --pi       # only register with pi
+sdd-loop init -g --show     # dry run: say what would happen, touch nothing
 ```
 
-重复跑是安全的:**绝不删任何已存在的文件或目录**。
+Re-running is safe: it **never deletes any existing file or directory**.
 
-装完**要重启宿主**才会加载到新 skill(Gemini 里也可以 `/skills reload`)。
+**Restart the host** after installing so the new skills get loaded (Gemini also takes `/skills reload`).
 
 <details>
-<summary>从 0.x 升级</summary>
+<summary>Upgrading from 0.x</summary>
 
-0.x 往各宿主的品牌目录里装(`~/.codex/skills/`、`~/.gemini/skills/`),现在改成共用 `~/.agents/skills/` 一份。宿主**不去重**:同一个 skill 两个目录里都有,它会被列两遍,模型看到两个同名 skill。
+0.x installed into each host's own directory (`~/.codex/skills/`, `~/.gemini/skills/`); the shared `~/.agents/skills/` replaces them. Hosts **do not deduplicate**: with the same skill in both directories it gets listed twice, and the model sees two skills with one name.
 
-`init -g` 会把旧软链找出来、给出 `rm` 命令,但**不替你删**——万一那是你自己重建的。删掉即可,skill 内容没变。
+`init -g` finds the stale symlinks and prints the `rm` commands, but **will not delete them for you** — they might be ones you recreated yourself. Removing them is enough; the skill contents did not change.
 
 </details>
 
-## 快速开始
+## Quick start
 
-| 步骤 | 多久一次 | 怎么做 |
+| Step | How often | How |
 |---|---|---|
-| **1. 初始化仓库** | 每个仓库一次 | 在项目里触发 sdd-init([各宿主的敲法](#安装)) |
-| **2. 走一轮访谈** | 每个 Loop 一次 | 触发 sdd-interview,走完[七站](#七站访谈) |
-| **3. 开工先对账** | 每轮开工 | `sdd-loop check` |
+| **1. Initialize the repo** | once per repo | trigger sdd-init in the project ([per-host triggers](#installation)) |
+| **2. Run one interview** | once per Loop | trigger sdd-interview and walk the [7 stations](#the-7-station-interview) |
+| **3. Reconcile before you start** | every round | `sdd-loop check` |
 
-第 2 步也可以是「我已经有一份 PRD,帮我整理成 SDD」—— 大纲照走,原文里没有的照样要问你。
+Step 2 can also be "I already have a PRD, turn it into SDD" — the outline is the same, and anything the PRD doesn't cover still gets asked.
 
-## 命令
+## Commands
 
-### `sdd-loop check` — 状态对账
+### `sdd-loop check` — state reconciliation
 
 ```bash
-sdd-loop check                    # 当前仓库
-sdd-loop check --repo <dir>       # 指定仓库
-sdd-loop check --json             # 机器可读
+sdd-loop check                    # current repo
+sdd-loop check --repo <dir>       # a specific repo
+sdd-loop check --json             # machine-readable
 ```
 
-对四件事:front-matter 读不读得出来、`activeLoop` 指的目录是不是空的、已关闭 Loop 的阶段文档是否全部归档、当前卡在哪道门禁。
+Four things: whether the front matter parses at all, whether the directory `activeLoop` points at is empty, whether every stage document of a closed Loop made it into the archive, and which gate you are currently blocked on.
 
-| 退出码 | 含义 |
+| Exit code | Meaning |
 |---|---|
-| `0` | 干净 |
-| `1` | 声明与事实矛盾 |
-| `2` | 判据读不出来,此时不给任何结论 |
+| `0` | clean |
+| `1` | claims contradict the facts |
+| `2` | the evidence can't be read — no verdict is given at all |
 
-**只读**,矛盾由人解决:不改状态、不解冲突、不归档、不重命名文件。
+**Read-only.** Contradictions are for people to resolve: it does not edit state, resolve conflicts, archive, or rename files.
 
-### `sdd-loop guide` — 口径字典
+### `sdd-loop guide` — clause dictionary
 
 ```bash
-sdd-loop guide                                  # 列出全部类型
+sdd-loop guide                                  # list every type
 sdd-loop guide --type specification.entity-table
 ```
 
-输出三样:该写哪几项、本仓库现有编号族(新增沿用同族前缀)、一条参考写法。**只在写之前给要求,不做事后判定。**
+Three things: which items this kind of clause needs, the ID families this repo already uses (new clauses reuse the same prefix), and one reference clause. **It states requirements before you write; it never judges after the fact.**
 
 <details>
-<summary>全部 17 种条款类型</summary>
+<summary>All 17 clause types</summary>
 
-**requirements.md** — `goal` 目标 · `non-goal` 非目标 · `scenario` 用户场景 · `success-criterion` 成功标准 · `non-functional` 非功能要求
+**requirements.md** — `goal` · `non-goal` · `scenario` · `success-criterion` · `non-functional`
 
-**architecture.md** — `module-boundary` 模块边界 · `adr` 技术决策 · `integration` 集成边界 · `schema-change` 数据模型变更 · `migration-map` 迁移映射
+**architecture.md** — `module-boundary` · `adr` · `integration` · `schema-change` · `migration-map`
 
-**specification.md** — `entity-table` 实体与字段表 · `state-machine` 状态机 · `permission-matrix` 权限矩阵 · `behavior` 行为条款 · `page-behavior` 页面行为 · `approval-flow` 审批流
+**specification.md** — `entity-table` · `state-machine` · `permission-matrix` · `behavior` · `page-behavior` · `approval-flow`
 
-**tasks.md** — `task` 实施任务
+**tasks.md** — `task`
 
 </details>
 
-## 七站访谈
+## The 7-station interview
 
-每一站的产出立刻落盘,`status: draft` 起步;改成 `confirmed` 是人的动作,AI 不代办。
+Each station's output lands on disk immediately at `status: draft`; promoting it to `confirmed` is a human action the AI never takes for you.
 
-| 站 | 问什么 | 落到哪 |
+| Station | Questions | Lands in |
 |---|---|---|
-| **0 · 需求起点与公司背景** | 一句话需求、产品名、目标业务域、成功标准、行业、发展阶段、经营模式、业务规模、当前用什么工具、当前痛点、一期目标、本期不做 | requirements.md<br>背景 / 目标 / 非目标 / 成功标准 |
-| **1 · 业务上下文** | 现在这事怎么跑、谁参与、卡在哪、一期闭环到哪、边界在哪 | requirements.md<br>用户场景 / 范围 |
-| **2 · 系统骨架** | 模块怎么分、核心实体与关系、业务单据、共享机制、技术选型、外部系统怎么接 | architecture.md<br>模块边界 / 技术决策 / 集成边界 |
-| **3 · 场景粗流程推演** | 端到端主流程、关键场景、异常分支、审批流 | specification.md<br>主流程 / 异常分支 / 审批流 |
-| **4 · 字段清单与业务规则** | 有哪些单据/对象、每个字段(控件、取值、必填、在哪个页面)、状态机、每个状态谁能做什么、业务规则 | specification.md<br>实体与字段表 / 状态机 / 权限矩阵 / 行为条款 |
-| **5 · 用例数据推演** | 样例主数据、样例单据、事件序列、测试用例 | specification.md<br>用例(数据 + 事件 + 预期) |
-| **6 · 页面规格** | 页面清单、关键交互、校验点、列表/表单/弹窗行为、非功能要求 | specification.md 页面行为<br>requirements.md 非功能要求 |
-| **收官 · 拆任务** | 不提问,读代码 | tasks.md<br>编号 / 引用的需求·架构·规格编号 / 完成条件 / 验证方法 |
+| **0 · Starting point and company background** | the one-line request, product name, target business domain, success criteria, industry, stage, business model, scale, tools in use today, current pain, goal for this phase, what's out of scope | requirements.md<br>background / goals / non-goals / success criteria |
+| **1 · Business context** | how this runs today, who takes part, where it stalls, how far this phase closes the loop, where the boundary is | requirements.md<br>user scenarios / scope |
+| **2 · System skeleton** | how modules split, core entities and relations, business documents, shared mechanisms, tech choices, how external systems connect | architecture.md<br>module boundaries / decisions / integrations |
+| **3 · Coarse scenario walkthrough** | end-to-end main flow, key scenarios, exception branches, approval flows | specification.md<br>main flow / exception branches / approval flows |
+| **4 · Field lists and business rules** | which documents/objects exist, every field (control, values, required, which page), state machines, who can do what in each state, business rules | specification.md<br>entity tables / state machines / permission matrices / behavior clauses |
+| **5 · Worked example data** | sample master data, sample documents, event sequences, test cases | specification.md<br>examples (data + events + expectations) |
+| **6 · Page specs** | page inventory, key interactions, validation points, list/form/dialog behavior, non-functional requirements | specification.md page behavior<br>requirements.md non-functional requirements |
+| **Wrap-up · task breakdown** | no questions — reads the code | tasks.md<br>ID / referenced requirement·architecture·spec IDs / done criteria / how to verify |
 
-## 文件长什么样
+## What the files look like
 
-初始化之后:
+After initialization:
 
 ```
-你的项目/
-├── AGENTS.md              # 门禁规则
-├── CLAUDE.md              # 转引 AGENTS.md
+your-project/
+├── AGENTS.md              # gate rules
+├── CLAUDE.md              # points at AGENTS.md
 └── docs/
     ├── loops/
-    │   ├── status.md      # 走到哪一步了
-    │   └── loop-1/        # 访谈第 0 站时创建
+    │   ├── status.md      # where you stopped
+    │   └── loop-1/        # created at station 0 of the interview
     │       ├── requirements.md
     │       ├── architecture.md
     │       ├── specification.md
     │       └── tasks.md
-    └── archive/           # 关闭的 Loop 挪到这
+    └── archive/           # closed Loops move here
 ```
 
-路径是默认值:目录约定不同,用 `sdd-loop check --status-file <path>` / `--archive-dir <path>` 指过去。
+Those paths are defaults: if your layout differs, point at it with `sdd-loop check --status-file <path>` / `--archive-dir <path>`.
 
-## 许可
+## License
 
-MIT。
+MIT License — see [LICENSE](LICENSE) for details.
