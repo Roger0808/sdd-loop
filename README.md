@@ -41,26 +41,22 @@ npm link
 sdd-loop init -g
 ```
 
-`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主:
+`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主,没检测到的跳过。想单独装某一个:
 
-| 宿主 | 落点 |
-|---|---|
-| Claude Code | `~/.claude/skills/` |
-| Codex | `~/.codex/skills/` |
-| Gemini CLI | `~/.gemini/skills/` |
-| pi | `pi install` 登记本包 |
-
-没检测到的宿主自动跳过并说明理由。想先看它要做什么:
+| 宿主 | 安装 | 落点 | 触发方式 |
+|---|---|---|---|
+| Claude Code | `sdd-loop init -g --claude` | 软链进 `~/.claude/skills/` | 斜杠命令 |
+| Codex | `sdd-loop init -g --codex` | 软链进 `~/.codex/skills/` | 模型按描述自己激活 |
+| Gemini CLI | `sdd-loop init -g --gemini` | 软链进 `~/.gemini/skills/` | 模型按描述自己激活 |
+| pi | `sdd-loop init -g --pi` | `pi install` 登记本包 | 斜杠命令 + 内置工具 |
 
 ```bash
-sdd-loop init -g --show
+sdd-loop init -g --show    # 只看要做什么，不动手
 ```
 
-只装一个宿主加 `--claude` / `--codex` / `--gemini` / `--pi`。重复跑是安全的:**绝不删任何已存在的文件或目录**,位置被别的东西占着就报出来交给你。
+重复跑是安全的:**绝不删任何已存在的文件或目录**。
 
 装完**要重启宿主**才会加载到新 skill(Gemini 里也可以 `/skills reload`)。
-
-> pi 用户也可以不 clone,直接 `pi install git:github.com/Roger0808/sdd-loop`。代价是没有 `sdd-loop` 这条命令,查口径只能走 pi 的 `sdd_spec_guide` 工具。
 
 ## 快速开始
 
@@ -81,8 +77,6 @@ sdd-loop init -g --show
 ```bash
 sdd-loop check
 ```
-
-> `sdd-loop init -g` 和 `/sdd-init` 是两件事,名字像但别混:前者装工具(每台机器一次),后者初始化一个仓库(每个仓库一次)。
 
 ## 命令
 
@@ -131,8 +125,6 @@ sdd-loop guide --type specification.entity-table
 | 状态对账 | `sdd-loop check` | `sdd-loop check` | `sdd-loop check` | `sdd_loop_check` 工具 |
 | 查条款口径 | `sdd-loop guide --type <类型>` | 同左 | 同左 | `sdd_spec_guide` 工具 |
 
-Codex 与 Gemini 的 skill 由模型按描述自己激活,没有斜杠命令,所以那两格写的是「你说什么」。
-
 ## 七站访谈
 
 七站问完产出四份文档。**每一站的产出立刻落盘**,`status: draft` 起步,你确认后才改成 `confirmed` —— 确认是人的动作,AI 不代办。
@@ -147,11 +139,11 @@ Codex 与 Gemini 的 skill 由模型按描述自己激活,没有斜杠命令,所
 | **5 · 用例数据推演** | 样例主数据、样例单据、事件序列、测试用例 | specification.md<br>用例(数据 + 事件 + 预期) |
 | **6 · 页面规格** | 页面清单、关键交互、校验点、列表/表单/弹窗行为、非功能要求 | specification.md 页面行为<br>requirements.md 非功能要求 |
 
-**收官:拆任务**(不是提问站)。前面靠问,这一步靠读代码。产出 `tasks.md`:每条任务写编号、引用的需求/架构/规格编号、完成条件、验证方法。
+**收官:拆任务。** 前面靠问,这一步靠读代码。产出 `tasks.md`:每条任务写编号、引用的需求/架构/规格编号、完成条件、验证方法。
 
 之后 implementation 与 verification 两个阶段由 coding agent 按 `AGENTS.md` 的门禁走。
 
-> 访谈只能得到你脑子里的东西。代码现状、接口错误语义、运行环境**必须去读代码**;读不到就在文档里标「待勘察」,**不许编** —— 编出来的结论会被后续流程当成高级别事实用。
+> 代码现状、接口错误语义、运行环境**必须去读代码**,访谈问不出来;读不到就标「待勘察」,**不许编**。
 
 ## 文件长什么样
 
