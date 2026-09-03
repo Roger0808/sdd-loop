@@ -41,14 +41,16 @@ npm link
 sdd-loop init -g
 ```
 
-`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主,没检测到的跳过。想单独装某一个:
+`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主,没检测到的跳过。
 
-| 宿主 | 安装 | 落点 | 触发方式 |
-|---|---|---|---|
-| Claude Code | `sdd-loop init -g --claude` | 软链进 `~/.claude/skills/` | 斜杠命令 |
-| Codex | `sdd-loop init -g --codex` | 软链进 `~/.codex/skills/` | 模型按描述自己激活 |
-| Gemini CLI | `sdd-loop init -g --gemini` | 软链进 `~/.gemini/skills/` | 模型按描述自己激活 |
-| pi | `sdd-loop init -g --pi` | `pi install` 登记本包 | 斜杠命令 + 内置工具 |
+| 宿主 | 单独安装 | 落点 | 初始化仓库 | 走访谈 |
+|---|---|---|---|---|
+| Claude Code | `sdd-loop init -g --claude` | 软链进 `~/.claude/skills/` | `/sdd-init` | `/sdd-interview` |
+| Codex | `sdd-loop init -g --codex` | 软链进 `~/.codex/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Gemini CLI | `sdd-loop init -g --gemini` | 软链进 `~/.gemini/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| pi | `sdd-loop init -g --pi` | `pi install` 登记本包 | `/sdd init` | `/sdd` |
+
+`sdd-loop check` 与 `sdd-loop guide` 四个宿主里敲法都一样;pi 里也可以用内置的 `sdd_loop_check` / `sdd_spec_guide` 工具。
 
 ```bash
 sdd-loop init -g --show    # 只看要做什么，不动手
@@ -60,23 +62,13 @@ sdd-loop init -g --show    # 只看要做什么，不动手
 
 ## 快速开始
 
-**1. 初始化仓库**(每个仓库一次)
+| 步骤 | 多久一次 | 怎么做 |
+|---|---|---|
+| **1. 初始化仓库** | 每个仓库一次 | 在项目里触发 sdd-init([各宿主的敲法](#安装)) |
+| **2. 走一轮访谈** | 每个 Loop 一次 | 触发 sdd-interview,走完[七站](#七站访谈) |
+| **3. 开工先对账** | 每轮开工 | `sdd-loop check` |
 
-在你的项目里让 agent 加载 sdd-init:Claude Code 敲 `/sdd-init`,pi 敲 `/sdd init`,Codex / Gemini 直接说「初始化 SDD」。
-
-生成 `AGENTS.md`(门禁规则)、`CLAUDE.md`、`docs/loops/status.md`。只建结构,不写任何业务内容。**别删 `AGENTS.md`** —— 状态对账执行的就是它里面那条门禁规则。
-
-**2. 走一轮访谈**
-
-`/sdd-interview`(pi 里 `/sdd`,Codex / Gemini 说「走 SDD 访谈」)。带你走完[七站](#七站访谈),产出四份文档。
-
-也可以是「我已经有一份 PRD,帮我整理成 SDD」—— 大纲照走,每一站的内容先从原文里找,原文没有的照样要问你。
-
-**3. 每轮开工先对账**
-
-```bash
-sdd-loop check
-```
+第 2 步也可以是「我已经有一份 PRD,帮我整理成 SDD」—— 大纲照走,原文里没有的照样要问你。
 
 ## 命令
 
@@ -115,15 +107,6 @@ sdd-loop guide --type specification.entity-table
 **tasks.md** — `task` 实施任务
 
 </details>
-
-### 各宿主怎么触发
-
-| 做什么 | Claude Code | Codex | Gemini CLI | pi |
-|---|---|---|---|---|
-| 初始化仓库 | `/sdd-init` | 说「初始化 SDD」 | 说「初始化 SDD」 | `/sdd init` |
-| 走访谈 | `/sdd-interview` | 说「走 SDD 访谈」 | 说「走 SDD 访谈」 | `/sdd` |
-| 状态对账 | `sdd-loop check` | `sdd-loop check` | `sdd-loop check` | `sdd_loop_check` 工具 |
-| 查条款口径 | `sdd-loop guide --type <类型>` | 同左 | 同左 | `sdd_spec_guide` 工具 |
 
 ## 七站访谈
 
