@@ -24,8 +24,22 @@ function skillText() {
   return fs.readFileSync(SKILL_PATH, "utf8");
 }
 
-/** skill 里合法提到、但不是阶段文档的 .md 文件（状态文件、规则文件、skill 自身）。 */
-const NON_STAGE_DOC_ALLOWLIST = new Set(["status.md", "AGENTS.md", "CLAUDE.md", "SKILL.md", "README.md"]);
+/** skill 里合法提到、但不是阶段文档的 .md 文件（状态文件、规则文件、跨 Loop 待办、skill 自身）。 */
+const NON_STAGE_DOC_ALLOWLIST = new Set([
+  "status.md",
+  "backlog.md",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "SKILL.md",
+  "README.md",
+]);
+
+/**
+ * 本轮不做的东西的落点。**测试自己写一份**，不从别处 import——
+ * AGENTS.md 模板（记进去的那一端）和本 skill（捞出来的那一端）各写一份路径，
+ * 靠两边的锁各自钉住这个常量，谁单方面改了路径都会红。
+ */
+const BACKLOG_FILE = "docs/backlog.md";
 
 test("skill 存在且有 frontmatter（name/description 是 pi 注册的硬要求）", () => {
   const text = skillText();
@@ -160,6 +174,24 @@ test("第 0 站的公司背景标着访谈专属：带文档来的也要问", ()
   for (const item of ["行业", "发展阶段", "经营模式", "业务规模", "当前工具", "当前痛点"]) {
     assert.ok(section.includes(item), `公司背景少了「${item}」——实测消失的就是这一组`);
   }
+});
+
+// backlog 的另一端：AGENTS.md 的 Implementation 门禁要求把本轮不做的缺陷记进
+// docs/backlog.md，那条只有在下一轮真的被捞出来时才有意义。捞的动作落在第 0 站
+// ——requirements.md 就是这一站产出的。锚到第 0 站小节内，不做全文 includes：
+// 别处随口提一句 backlog 也能让全文锁变绿，而那一句不会让任何人去读它。
+test("第 0 站开局捞 backlog：上一轮记下的欠账要逐条交用户拍板", () => {
+  const text = skillText();
+  const start = text.indexOf("### 第 0 站");
+  assert.ok(start !== -1, "第 0 站丢了");
+  const section = text.slice(start, text.indexOf("\n### ", start + 1));
+
+  assert.ok(section.includes(BACKLOG_FILE), `第 0 站没读 ${BACKLOG_FILE}——上一轮记进去的东西永远出不来`);
+  assert.ok(section.includes("不许替用户删"), "没禁止替用户删——被判「这轮不做」的那条会就此消失");
+  assert.ok(
+    /backlog 为空/.test(section),
+    "没交代空 backlog 时也要吭一声：静默跳过和「真的没有」在用户眼里长得一样",
+  );
 });
 
 // 事故里模型报的是「第 0/1 站完成」——它自己认为完成了。没有「完成」的定义，

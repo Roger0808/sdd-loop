@@ -30,6 +30,21 @@ const claudeTemplate = () => read("CLAUDE.md.template");
 /** loop-check 执行的那条规则的原话。模板和判定必须是同一句。 */
 const ENFORCED_RULE = "如果状态文件、活跃目录和阶段文档互相矛盾，应停止相关工作并请求用户确认。";
 
+/**
+ * 本轮不做的东西的落点。**测试自己写一份**，不从别处 import——
+ * 模板和访谈 skill 两边各写一份路径，就靠这个常量把它们钉在一起：
+ * 谁单方面改了路径，记的一方和捞的一方就对不上，而两边各自看都「合理」。
+ */
+const BACKLOG_FILE = "docs/backlog.md";
+
+/** 取出模板里某个阶段门禁小节的正文（到下一个 ## / ### 为止）。 */
+function gateSection(name) {
+  const text = agentsTemplate();
+  const rest = text.slice(text.indexOf(`### ${name}`) + 1);
+  const end = rest.search(/\n#{2,3} /);
+  return rest.slice(0, end === -1 ? undefined : end);
+}
+
 // ---------------------------------------------------------------- 表面形状
 
 test("skill 存在且有 frontmatter（name/description 是 pi 注册的硬要求）", () => {
@@ -96,13 +111,7 @@ test("AGENTS.md 模板的阶段门禁小节 ≡ convention.stageDocs（顺序也
 // 三处门禁（Architecture / Verification / 工作区与 Git）里唯一提到数据库的是最后那条，
 // 而它讲的是执行命令前先确认目标，不是设计与文档。
 test("schema 变更是常驻条款：Architecture 与 Verification 各有一条，且不带「源项目迁移」删除标记", () => {
-  const text = agentsTemplate();
-  const gate = (name) => {
-    const start = text.indexOf(`### ${name}`);
-    const rest = text.slice(start + 1);
-    const end = rest.search(/\n#{2,3} /);
-    return rest.slice(0, end === -1 ? undefined : end);
-  };
+  const gate = gateSection;
   const arch = gate("Architecture");
   assert.ok(arch.includes("数据模型"), "Architecture 门禁没有 schema 变更条款");
   assert.ok(arch.includes("回滚"), "变更要求里没有回滚路径——不可逆变更就没有兜底");
@@ -121,6 +130,20 @@ test("术语分家：模板把「源项目迁移」和「数据模型变更」�
   assert.ok(text.includes("源项目迁移"), "A 类的标记名没改——和 schema 变更撞名，会被一起删");
   assert.ok(!text.includes("迁移类项目才保留"), "旧的含糊标记还在");
   assert.ok(text.includes("别一起删"), "落地引导没交代两者的去留差别");
+});
+
+// SKILL 让 agent「删掉标了 X 的行」，X 必须是模板里真的存在的标记串。
+// 实际漂过：模板改成「源项目迁移」之后 SKILL 还写着「迁移类项目才保留」，
+// agent 照着找一个不存在的标记，一行也删不掉——而两份文件各自看都通顺。
+test("删除标记的名字：SKILL 让 agent 找的那个串，模板里真的有", () => {
+  const line = skill().split("\n").find((l) => l.includes("非迁移/重写类项目"));
+  assert.ok(line, "第 2 步里「非迁移项目怎么删」这条指引丢了");
+  const marker = line.match(/删掉标了「([^」]+)」的行/);
+  assert.ok(marker, "指引没有用「删掉标了「X」的行」的写法，这条锁就找不到 X 了");
+  assert.ok(
+    agentsTemplate().includes(marker[1]),
+    `SKILL 让 agent 删标了「${marker[1]}」的行，模板里根本没有这个标记——一行也删不掉`,
+  );
 });
 
 // 门禁说「必须写这四项」，字典得能在写之前把这四项摆出来，否则要求没有着落。
@@ -142,6 +165,45 @@ test("留空不等于不涉及：不改数据模型时必须明写一句，否�
   const text = agentsTemplate();
   assert.ok(text.includes("本轮不涉及数据模型变更"), "「不涉及时明说」的原话丢了");
   assert.ok(text.includes("留空等于没判断过"), "没写清为什么要明说，下次会被当成啰嗦删掉");
+});
+
+// 用户实测的缺口：Implementation 门禁一直写着「发现新需求时先记录」，但没说记哪里。
+// 没有落点的「先记录」就是记在对话里——会话一结束就没了，下一轮谁也捞不到。
+// 一条完整的链要三段都在：记进哪里 / 从哪里捞回来 / 这文件归谁管。
+// 只锁「模板提到过 backlog」是空绿：提一句而没人捞，等于建了个垃圾桶。
+test("发现的新需求与缺陷有落点：Implementation 记进 backlog", () => {
+  const impl = gateSection("Implementation");
+  assert.ok(impl.includes("先记录"), "「发现新需求时先记录」这条门禁丢了");
+  assert.ok(impl.includes(BACKLOG_FILE), `「先记录」没给落点——记哪里没说，等于记在对话里`);
+  assert.ok(
+    /会话一结束|下一轮谁也捞不到/.test(impl),
+    "没写清「只说一句先记下」为什么不算数，这条会被当成啰嗦精简掉",
+  );
+});
+
+test("记进去的能捞出来：Requirements 开局读 backlog，逐条交用户拍板", () => {
+  const req = gateSection("Requirements");
+  assert.ok(req.includes(BACKLOG_FILE), "Requirements 开局没有捞 backlog——记进去的东西永远出不来");
+  assert.ok(req.includes("用户"), "捞出来之后没说由用户决定，agent 会自己挑该做哪条");
+  assert.ok(req.includes("不得替用户删"), "没禁止替用户删——被判「不做」的那条会就此消失");
+  assert.ok(
+    /backlog 为空/.test(req),
+    "没交代空 backlog 时也要吭一声，静默跳过和「真的没有」在用户眼里长得一样",
+  );
+});
+
+test("backlog 是跨 Loop 常驻文件：不属于任何 Loop，不归档，不参与阶段门禁", () => {
+  const text = agentsTemplate();
+  const rules = text.slice(text.indexOf("## 文档规则"));
+  assert.ok(rules.includes(BACKLOG_FILE), "文档规则里没有给 backlog 定性，它会被当成阶段文档跟着 Loop 归档掉");
+  assert.ok(rules.includes("跨 Loop 常驻"), "没说清它跨 Loop，关 Loop 时会被一起归档，欠账就此消失");
+  assert.ok(rules.includes("不随 Loop 关闭归档"), "没有显式排除归档");
+  // backlog 不是阶段文档：混进阶段清单会被 check 的归档完整性判据当成漏归档，
+  // 那正是「假警报比漏报更致命」的典型形状。
+  assert.ok(
+    !DEFAULT_CONVENTION.stageDocs.includes("backlog"),
+    "backlog 被加进 stageDocs 了——它会被归档完整性判据当成漏归档的阶段文档",
+  );
 });
 
 // ---------------------------------------------------------------- 分层锁
