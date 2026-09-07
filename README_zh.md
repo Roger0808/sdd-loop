@@ -66,7 +66,7 @@ sdd-loop init -g
 
 ⚠️ Cursor 有多份「不跟进软链」的报告,本包正是软链装法——装上了也可能发现不了。
 
-还有第三个 skill **sdd-upgrade**，管**已经**在跑 SDD Loop 的仓库：把它建好之后模板里新加的门禁条款补齐，或者从单流改成分流。触发方式同上（说「升级 SDD 规则」，或 `/sdd-upgrade`）。从没初始化过的仓库不走它，走 sdd-init。
+还有第三个 skill **sdd-upgrade**，管**已经**在跑 SDD Loop 的仓库：把它建好之后模板里新加的门禁条款补齐，或者从单流改成分流。迁成分流时，它还会替换 `AGENTS.md` 里已经失效的根状态路径，但不会静默改写已确认的阶段文档；真要改，必须拆成用户单独点头并重新留确认痕迹的动作。触发方式同上（说「升级 SDD 规则」，或 `/sdd-upgrade`）。从没初始化过的仓库不走它，走 sdd-init。
 
 `sdd-loop check` 与 `sdd-loop guide` 在哪个宿主里敲法都一样;pi 里也可以用内置的 `sdd_loop_check` / `sdd_spec_guide` 工具。
 
@@ -120,6 +120,8 @@ sdd-loop check --json             # 机器可读
 | `2` | 判据读不出来,此时不给任何结论 |
 
 **只读**,矛盾由人解决:不改状态、不解冲突、不归档、不重命名文件。
+
+状态路径已经存在但读不出来时——例如误建成了名为 `status.md` 的目录——属于判据不可读（退出 `2`），不是「状态不存在」的冷启动。
 
 ### `sdd-loop guide` — 口径字典
 
@@ -202,6 +204,8 @@ sdd-loop guide --type specification.entity-table
 ```
 
 不用加配置文件：根上那份状态文件挪走，`sdd-loop check` 自己就发现得了，然后逐流报结论。**一条流读不出来，不影响其余各流给结论。**只想看一条用 `--stream <名字>`。
+
+自定义布局时，`--status-file` 传的是「单流形态下状态文件会在的基准路径」；发现分流后，工具会在文件名前插入 `<流名>/`，`--archive-dir` 则在末尾追加 `<流名>/`。例如 `--status-file meta/loops/status.md --archive-dir meta/archive` 会发现 `meta/loops/maker/status.md`，并把该流的归档根解析成 `meta/archive/maker/`。
 
 Loop 编号是流内的，`maker/loop-1` 和 `admin-console/loop-1` 是两个不同的 Loop，提到时要带流名。条款编号（`REQ-001`）不受影响——它们只在同一条流内部互相引用。
 

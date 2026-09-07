@@ -66,7 +66,7 @@ sdd-loop init -g
 
 ⚠️ Cursor has several reports of not following symlinks, and symlinks are exactly how this package installs — it may not be discovered there.
 
-A third skill, **sdd-upgrade**, brings a repo that is *already* running SDD Loop up to the current rules — new gate clauses that landed in the template after it was set up, or the switch from one stream to several. Trigger it the same way ("upgrade the SDD rules", `/sdd-upgrade`). Repos that have never been initialized go through sdd-init instead.
+A third skill, **sdd-upgrade**, brings a repo that is *already* running SDD Loop up to the current rules — new gate clauses that landed in the template after it was set up, or the switch from one stream to several. During a split it also replaces obsolete root-status paths in `AGENTS.md`, but it does not silently rewrite confirmed stage documents; changing one is a separate, human-approved action that must renew its confirmation trail. Trigger it the same way ("upgrade the SDD rules", `/sdd-upgrade`). Repos that have never been initialized go through sdd-init instead.
 
 `sdd-loop check` and `sdd-loop guide` are typed the same way in every host; pi also ships them as the built-in `sdd_loop_check` / `sdd_spec_guide` tools.
 
@@ -120,6 +120,8 @@ Four things: whether the front matter parses at all, whether the directory `acti
 | `2` | the evidence can't be read — no verdict is given at all |
 
 **Read-only.** Contradictions are for people to resolve: it does not edit state, resolve conflicts, archive, or rename files.
+
+A status path that exists but cannot be read — for example, a directory accidentally named `status.md` — is unreadable evidence (exit `2`), not a missing-status cold start.
 
 ### `sdd-loop guide` — clause dictionary
 
@@ -202,6 +204,8 @@ your-project/
 ```
 
 No config file to add: drop the root status file and `sdd-loop check` discovers the streams and reports each one separately. **A stream that can't be read never withholds the other streams' verdicts.** `--stream <name>` narrows it to one.
+
+With a custom layout, `--status-file` names the path the status file would have in single-stream form; stream discovery inserts `<stream>/` before that filename, while `--archive-dir` gets `<stream>/` appended. For example, `--status-file meta/loops/status.md --archive-dir meta/archive` discovers `meta/loops/maker/status.md` and uses `meta/archive/maker/` for that stream.
 
 Loop numbers are per stream, so `maker/loop-1` and `admin-console/loop-1` are different Loops — write the stream name when you refer to one. Clause IDs (`REQ-001`) are unaffected: they only ever reference each other inside one stream.
 
