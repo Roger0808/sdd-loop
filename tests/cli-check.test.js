@@ -155,6 +155,21 @@ test("分流：--stream 只判指名那条，别的流报红也不影响它的�
   assert.match(out, /只判一条流：maker/, "抬头没说清这一趟只判了指名的那条");
 });
 
+test("状态文件位置是个目录：CLI 给退出码 2 的报告，不是一段 Node 堆栈", () => {
+  // `fs.existsSync()` 对目录也返回 true，随后的 readFileSync 抛 EISDIR。
+  // 未处理的异常没有退出码契约可言：调这个 CLI 的门禁脚本只会看到一个非 0，
+  // 分不清「判据读不出来」和「工具自己崩了」。
+  const root = streamRepo({ maker: okStream, "admin-console": okStream });
+  fs.rmSync(path.join(root, "docs/loops/admin-console/status.md"));
+  fs.mkdirSync(path.join(root, "docs/loops/admin-console/status.md"));
+
+  const { code, out, err } = run(["--repo", root]);
+  assert.equal(code, EXIT_UNUSABLE, "判据读不出来就该是 2");
+  assert.ok(!err.includes("EISDIR"), `抛了未处理异常：${err.trim()}`);
+  assert.ok(!/^\s+at /m.test(err), `stderr 里印出了堆栈：${err.trim()}`);
+  assert.ok(out.includes("── 流 maker ──"), "另一条流的结论被一起吞掉了");
+});
+
 // 打错流名走下去只会得到「这个仓库还没有 SDD Loop 结构」，用户会照着去
 // 初始化一个已经初始化过的仓库——那是不可逆的一步，而错因是个拼写。
 test("分流：--stream 打错名字是用法错误，不许说成「还没有 SDD Loop 结构」", () => {

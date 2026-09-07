@@ -311,6 +311,58 @@ test("分流发现不误报：判据是「里面有状态文件」，不是「�
   assert.deepEqual(discoverStreams(root).streams, ["maker"], "只有带状态文件的那个才是流");
 });
 
+// ---------------- 状态文件位置上是个目录（existsSync 对目录也返回 true）
+//
+// 这一组锁的是同一件事的三处落点：`fs.existsSync()` 说「在」，`readFileSync()` 抛 EISDIR。
+// 没有读取层时，用户拿到的是一段 Node 堆栈——不是退出码 2，也就没有任何结论可依据。
+
+test("状态文件位置是个目录：这条流仍然算发现了，判成读不出来，不是悄悄消失", () => {
+  // 方向很重要：把它判成「这条流不存在」，等于一条流悄悄退出门禁——
+  // 比报错危险得多，因为没有人会去查一条自己以为在被检查的流。
+  const root = makeStreamRepo({ maker: okStream, "admin-console": okStream });
+  fs.rmSync(path.join(root, "docs/loops/admin-console/status.md"));
+  fs.mkdirSync(path.join(root, "docs/loops/admin-console/status.md"));
+
+  assert.deepEqual(discoverStreams(root).streams, ["admin-console", "maker"], "目录挡住状态文件时这条流被丢掉了");
+
+  const repo = buildRepoCheckReport(root);
+  const broken = repo.streams.find((s) => s.name === "admin-console").report;
+  assert.equal(broken.readable, false);
+  assert.equal(broken.reason, "unreadable", "存在但读不出来被说成了冷启动——用户会去初始化一条已经在跑的流");
+  assert.equal(broken.severity, "unusable");
+  // 隔离：一条流读不出来不该吞掉别人的结论。
+  const fine = repo.streams.find((s) => s.name === "maker").report;
+  assert.equal(fine.readable, true, "另一条流的判据没问题，结论必须照给");
+  assert.equal(repo.severity, "unusable", "整体取最坏的那一档");
+});
+
+test("根状态文件位置是个目录：单流仓库同样判读不出来，不许说成冷启动", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-dirstatus-"));
+  fs.mkdirSync(path.join(root, "docs/loops/status.md"), { recursive: true });
+  const repo = buildRepoCheckReport(root);
+  assert.equal(repo.mode, "single");
+  const report = repo.streams[0].report;
+  assert.equal(report.readable, false);
+  assert.equal(report.reason, "unreadable", "路径上已经有东西了，「去初始化」是句会覆盖它的建议");
+  assert.equal(report.nextStep, null, "读不出来时不许给任何结论");
+});
+
+test("阶段文档位置是个目录：算判据不可读，不是「这份文档不存在」", () => {
+  const root = makeRepo((r) => {
+    write(r, "docs/loops/status.md", statusFile({ activeLoop: 1 }));
+    write(r, "docs/loops/loop-1/requirements.md", doc("confirmed"));
+  });
+  fs.rmSync(path.join(root, "docs/loops/loop-1/requirements.md"));
+  fs.mkdirSync(path.join(root, "docs/loops/loop-1/requirements.md"));
+  const report = buildLoopCheckReport(root);
+  assert.equal(report.readable, false);
+  assert.equal(report.severity, "unusable");
+  assert.ok(
+    report.problems.some((p) => p.kind === "unreadable-file"),
+    "没有一条问题说清是「读不出来」，用户只会看到一份少了一份文档的报告",
+  );
+});
+
 test("分流发现：一条流都没有时按单流走，好让冷启动照常报 missing-status", () => {
   // 「一条都没发现」和「发现了但读不出来」必须可区分：前者去初始化，后者停下修文件。
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-empty-"));
@@ -420,4 +472,29 @@ test("流名解析：状态文件与归档根一起下移一层，两处必须�
   assert.equal(over.statusFile, path.join("docs", "loops", "maker", "status.md"));
   assert.equal(over.archiveDir, path.join("docs", "archive", "maker"));
   assert.equal(buildLoopCheckReport(root, over).statusPath, over.statusFile, "发现与判定得走同一套推导");
+});
+
+test("自定义路径 + 分流：--status-file 是未分流基准路径，状态与归档一起派生", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-streams-custom-"));
+  write(
+    root,
+    "meta/loops/maker/state.md",
+    statusFile({ activeLoop: "null", lastClosedLoop: 1, nextLoop: 2 }),
+  );
+  write(root, "meta/archive/maker/loop-1-done/requirements.md", doc("archived"));
+  git(root, ["init", "-q"]);
+  git(root, ["add", "-A"]);
+  git(root, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"]);
+
+  const overrides = { statusFile: "meta/loops/state.md", archiveDir: "meta/archive" };
+  assert.deepEqual(discoverStreams(root, overrides), { mode: "streams", streams: ["maker"] });
+
+  const streamConvention = conventionForStream("maker", overrides);
+  assert.equal(streamConvention.statusFile, path.join("meta", "loops", "maker", "state.md"));
+  assert.equal(streamConvention.archiveDir, path.join("meta", "archive", "maker"));
+
+  const repo = buildRepoCheckReport(root, overrides, { stream: "maker" });
+  assert.equal(repo.streams[0].report.statusPath, streamConvention.statusFile);
+  assert.equal(repo.streams[0].report.ok, true, "自定义归档根应只扫描本流的归档");
+  assert.deepEqual(repo.streams[0].report.problems, []);
 });

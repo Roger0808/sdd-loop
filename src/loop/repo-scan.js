@@ -36,6 +36,11 @@ export function discoverStreams(repoRoot, overrides = {}) {
     for (const entry of fs.readdirSync(loopsDirAbs)) {
       // 判据是「这个子目录里有状态文件」，不是「它是个目录」——状态文件所在目录下
       // 将来可能有别的东西（语料、说明、脚本），按目录判会把它们全认成流。
+      //
+      // 这里刻意用 existsSync 而不是「必须是普通文件」：状态文件位置上如果是个目录，
+      // 那也是**发现了一条流、它的判据读不出来**（退出 2，停下修文件），
+      // 不是「这条流不存在」。后者会让一条流悄悄从门禁里消失——比报错危险得多。
+      // 读不出来由 scanLoopRepo 的读取层负责翻成事实，见 readTextFile。
       if (fs.existsSync(path.join(loopsDirAbs, entry, statusName))) streams.push(entry);
     }
   }
@@ -44,6 +49,33 @@ export function discoverStreams(repoRoot, overrides = {}) {
   // 一条流都没发现 → 仍然按单流走，好让 C1 原样报 missing-status（冷启动）。
   // 「一条都没发现」和「发现了但某条读不出来」必须可区分：前者去初始化，后者停下修文件。
   return streams.length ? { mode: "streams", streams } : { mode: "single", streams: [] };
+}
+
+/**
+ * 读一个文本文件；**读不出来返回 null**（目录、权限不足、IO 错都算）。
+ *
+ * 为什么不直接 readFileSync：`fs.existsSync()` 对目录也返回 true。盘上出现
+ * `docs/loops/status.md/`（目录）时，「存在」是真的、「能读」是假的，
+ * 而 readFileSync 会抛 EISDIR——CLI 当场异常退出，用户拿到的是一段 Node 堆栈，
+ * 不是「判据读不出来，别信任何结论」的退出码 2。
+ *
+ * 这一层只把「读不出来」变成一个事实（null），仍然不下结论：是谁读不出来、
+ * 算不算矛盾，归 loop-check.js。
+ */
+function readTextFile(absPath) {
+  try {
+    return fs.readFileSync(absPath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** 「读不出来」也是一条普通 issue；目录没有真实行号，不编一个 `:1`。 */
+function unreadableIssue(relPath) {
+  return {
+    kind: "unreadable-file",
+    detail: `\`${relPath}\` 存在但读不出来（是目录？权限不足？）——判据不可信。`,
+  };
 }
 
 /** git 只读查询；不是仓库、没装 git、命令失败都返回 null，让调用方降级而不是崩。 */
@@ -59,7 +91,17 @@ function git(repoRoot, args) {
 }
 
 function readDocFile(absPath) {
-  const content = fs.readFileSync(absPath, "utf8");
+  const content = readTextFile(absPath);
+  if (content === null) {
+    return {
+      name: path.basename(absPath, ".md"),
+      path: absPath,
+      ok: false,
+      status: "",
+      meta: {},
+      issues: [unreadableIssue(path.basename(absPath))],
+    };
+  }
   const { ok, meta, issues } = readFrontMatter(content);
   return {
     name: path.basename(absPath, ".md"),
@@ -103,7 +145,13 @@ export function scanLoopRepo(repoRoot, overrides = {}) {
   const statusExists = fs.existsSync(statusAbs);
   let status = { path: statusRel, exists: statusExists, ok: false, meta: {}, issues: [] };
   if (statusExists) {
-    const parsed = readFrontMatter(fs.readFileSync(statusAbs, "utf8"));
+    const content = readTextFile(statusAbs);
+    // 存在但读不出来：`exists` 仍然是 true。这一位决定 C1 说的是「读不出来，停下修文件」
+    // 还是「还没有 SDD Loop 结构，去初始化」——把它翻成 false，等于让用户
+    // 在一个已经有内容（哪怕是个目录）的路径上重新初始化。
+    const parsed = content === null
+      ? { ok: false, meta: {}, issues: [unreadableIssue(statusRel)] }
+      : readFrontMatter(content);
     status = { path: statusRel, exists: true, ok: parsed.ok, meta: parsed.ok ? parsed.meta : {}, issues: parsed.issues };
   }
 

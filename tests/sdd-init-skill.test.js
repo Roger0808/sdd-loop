@@ -59,18 +59,53 @@ function liveText(text) {
 }
 
 /**
+ * 按 markdown 的转义规则切一行表格：`\|` 是单元格里的竖线，不是分隔符。
+ *
+ * 直接 `line.split("|")` 会把带 `\|` 的合法行切多一格。那一格之差此前的后果是
+ * **静默跳过整行**——那条探针从此不被任何锁检查，而表面上全绿。
+ */
+function splitRow(line) {
+  const cells = [];
+  let cur = "";
+  for (let i = 0; i < line.length; i += 1) {
+    if (line[i] === "\\" && line[i + 1] === "|") {
+      cur += "|";
+      i += 1;
+      continue;
+    }
+    if (line[i] === "|") {
+      cells.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += line[i];
+  }
+  cells.push(cur);
+  return cells.map((c) => c.trim());
+}
+
+/**
  * 变更记录里的探针表。`sdd-upgrade` 拿这些原话去用户的 `AGENTS.md` 里搜，
  * 搜不到才提示补。所以探针必须在模板里真的搜得到——探针写错一个字，
  * upgrade 会报一条「缺失」，而那条其实一直在。假警报比漏报更致命。
+ *
+ * 切不出四列的表格行一律**报错**，不跳过。跳过是这份锁最危险的失效方式：
+ * 一条新条款只要写法碰上解析器的盲区，就悄悄退出全部检查，
+ * 而「至少解析出一行」那种下限断言照样绿。
  */
-function probes() {
+function parseProbeTable(text) {
   const out = [];
-  for (const line of changelog().split("\n")) {
-    if (!line.startsWith("|")) continue;
-    const cells = line.split("|").map((c) => c.trim());
-    if (cells.length !== 6) continue;
+  text.split("\n").forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) return;
+    const cells = splitRow(trimmed);
+    assert.equal(
+      cells.length,
+      6,
+      `变更记录第 ${i + 1} 行是表格行却切不出四列（单元格里的竖线要写成 \\|）：${trimmed}`,
+    );
     const [, clause, , cell, why] = cells;
-    if (clause === "条款" || /^-+$/.test(clause)) continue;
+    if (clause === "条款" || /^-+$/.test(clause)) return;
     const probe = cell.replace(/^`|`$/g, "").replace(/\\`/g, "`");
     const tier = why.includes("常驻")
       ? "常驻"
@@ -80,12 +115,72 @@ function probes() {
           ? "分流"
           : null;
     out.push({ clause, probe, tier });
-  }
+  });
   return out;
 }
 
-/** 模板里三种标记的原话。测试自己写一份，两边各写一份才锁得住漂移。 */
-const MARKERS = ["源项目迁移", "单人开发：删掉", "单流：删掉"];
+function probes() {
+  return parseProbeTable(changelog());
+}
+
+/** 「要删什么」方向的标记。测试自己写一份，两边各写一份才锁得住漂移。 */
+const DELETE_MARKERS = ["单人开发：删掉", "单流：删掉", "分流：删掉"];
+
+/** 模板里四种标记的原话。第一个是「要加什么」方向，其余三个是「要删什么」。 */
+const MARKERS = ["源项目迁移", ...DELETE_MARKERS];
+
+/**
+ * 状态文件入口的两种写法。**互斥**：落地之后只许留一种。
+ * 两种同时在场时，这份门禁声明了两个状态入口，读它的人不知道该信哪个——
+ * 而门禁文件里没有「大概」这一说。
+ */
+const ENTRY_SENTENCES = {
+  single: ["状态文件全仓库只有一份", "关 Loop 时用的是那唯一一份状态文件"],
+  split: ["状态每条流一份", "关 Loop 时用的状态文件是本流那份"],
+};
+
+/**
+ * 把删除标记真的执行一遍——模拟 agent 按某种形态落地模板时做的事。
+ *
+ * 删除单位只有三种（模板里明令只用这三种）：
+ *   这一条     = 该行（一个 bullet）
+ *   这一段     = 空行分隔的一块
+ *   本节整节   = 从上一个 `## ` 到下一个 `## ` 之前
+ *
+ * 只认「行内带 `<!--` 且带『删掉』」的标记，所以顶部引导注释里那些**提到**标记原话的句子
+ * 不会被误当成标记执行。
+ */
+function applyMarkers(text, { multi, split }) {
+  const drop = [split ? "分流：删掉" : "单流：删掉"];
+  if (!multi) drop.push("单人开发：删掉");
+
+  const lines = text.split("\n");
+  const kill = new Set();
+  lines.forEach((line, i) => {
+    const m = line.match(/<!--\s*(单人开发|单流|分流)：删掉([^>]*?)-->/);
+    if (!m || !drop.includes(`${m[1]}：删掉`)) return;
+    if (m[2].includes("本节整节")) {
+      let start = i;
+      while (start > 0 && !lines[start].startsWith("## ")) start -= 1;
+      let end = i;
+      while (end + 1 < lines.length && !lines[end + 1].startsWith("## ")) end += 1;
+      for (let k = start; k <= end; k += 1) kill.add(k);
+    } else if (m[2].includes("这一段")) {
+      let start = i;
+      while (start > 0 && lines[start - 1].trim() !== "") start -= 1;
+      let end = i;
+      while (end + 1 < lines.length && lines[end + 1].trim() !== "") end += 1;
+      for (let k = start; k <= end; k += 1) kill.add(k);
+    } else {
+      assert.ok(m[2].includes("这一条"), `删除单位只许用「这一条/这一段/本节整节」，实际是：${line}`);
+      kill.add(i);
+    }
+  });
+
+  const kept = lines.filter((_, i) => !kill.has(i)).join("\n");
+  // 落地时引导注释和剩下的标记都会被一并删掉（SKILL 第 3 步）。
+  return liveText(kept);
+}
 
 /** loop-check 执行的那条规则的原话。模板和判定必须是同一句。 */
 const ENFORCED_RULE = "如果状态文件、活跃目录和阶段文档互相矛盾，应停止相关工作并请求用户确认。";
@@ -367,7 +462,7 @@ test("污染与冷启动分开：读不出来时不许初始化，更不许覆�
 
 // ---------------------------------------------------------------- 协作形态三档
 
-test("三种标记：模板和 SKILL 用的是同一批原话", () => {
+test("四种标记：模板和 SKILL 用的是同一批原话", () => {
   const tpl = agentsTemplate();
   const sk = skill();
   for (const marker of MARKERS) {
@@ -378,7 +473,7 @@ test("三种标记：模板和 SKILL 用的是同一批原话", () => {
 
 // 标记有两个方向，搞反了后果不对称：
 //   「源项目迁移」= 要**加**什么，默认不在；
-//   「单人开发：删掉」「单流：删掉」= 要**删**什么，默认就在。
+//   「单人开发：删掉」「单流：删掉」「分流：删掉」= 要**删**什么，默认就在。
 // 实测把多人/分流条款写成了注释掉的（默认不在），于是多人项目落地之后门禁上少一条，
 // 而文件看起来完全正常。漏删只是多几句用不上的话，漏加是门禁上少一条。
 test("方向：多人档与分流档的条款默认在场，是正文不是注释", () => {
@@ -402,13 +497,66 @@ test("常驻条款所在的行不带任何删除标记——带了就会被 init
   for (const { clause, probe } of resident) {
     const line = lines.find((l) => l.includes(probe));
     assert.ok(line, `模板里找不到常驻条款「${clause}」`);
-    for (const marker of ["单人开发：删掉", "单流：删掉"]) {
+    for (const marker of DELETE_MARKERS) {
       assert.ok(
         !line.includes(marker),
         `常驻条款「${clause}」被标成了「${marker}」，单人/单流项目会连它一起删：${line}`,
       );
     }
   }
+});
+
+// ---------------------------------------------------------------- 落地之后长什么样
+//
+// 上面那些锁看的都是模板**本身**。这一组把标记真的执行一遍，看**落地之后**的文件：
+// 门禁文件里同时声明两个状态入口，是一种只在落地后才显形的矛盾——
+// 模板里两段都在是对的（默认在，不适用的才删），错的是删完之后两段还都在。
+
+test("落地之后只剩一个状态入口：单流留单流那段，分流留分流那段", () => {
+  const tpl = agentsTemplate();
+  const forms = [
+    { name: "单人 + 单流", form: { multi: false, split: false }, keep: "single" },
+    { name: "多人 + 单流", form: { multi: true, split: false }, keep: "single" },
+    { name: "多人 + 分流", form: { multi: true, split: true }, keep: "split" },
+  ];
+
+  for (const { name, form, keep } of forms) {
+    const out = applyMarkers(tpl, form);
+    const gone = keep === "single" ? "split" : "single";
+    for (const sentence of ENTRY_SENTENCES[keep]) {
+      assert.ok(out.includes(sentence), `${name}：该留的那句状态入口「${sentence}」被删掉了`);
+    }
+    for (const sentence of ENTRY_SENTENCES[gone]) {
+      assert.ok(
+        !out.includes(sentence),
+        `${name}：另一种形态的状态入口「${sentence}」还在——这份门禁同时声明了两个入口`,
+      );
+    }
+    // 常驻条款经过任何一种形态都必须活着，尤其 loop-check 执行的那一条。
+    assert.ok(out.includes(ENFORCED_RULE), `${name}：把 loop-check 执行的那条规则一起删了`);
+    assert.ok(out.length < tpl.length, `${name}：一个字都没删，这条锁在验一份没被处理过的模板`);
+  }
+});
+
+test("落地之后：分流形态里再没有一句话把根状态文件说成入口", () => {
+  // 「只剩一个入口」不能只靠几句原话的在场/缺席来锁——漏网的是**别处**又写死了根路径的句子。
+  // 分流仓库里根本没有 docs/loops/status.md，提到它的句子只许是那句「根目录下没有」。
+  const out = applyMarkers(agentsTemplate(), { multi: true, split: true });
+  for (const line of out.split("\n")) {
+    if (!line.includes("docs/loops/status.md")) continue;
+    assert.ok(
+      line.includes("根目录下没有"),
+      `分流形态的落地文件里还有一句写死了根状态文件路径：${line.trim()}`,
+    );
+  }
+});
+
+test("落地之后：单流形态里不出现 <流名> 这一层", () => {
+  const out = applyMarkers(agentsTemplate(), { multi: true, split: false });
+  assert.ok(
+    !out.includes("<流名>"),
+    "单流的落地文件里出现了 docs/loops/<流名>/ 这种路径——用户会照着去建一个不该有的目录层",
+  );
 });
 
 // sdd-upgrade 的动作一整个建立在这张表上：探针搜得到 = 已经有了，搜不到 = 候选。
@@ -420,6 +568,30 @@ test("变更记录的每条探针都能在模板里搜到，否则 upgrade 会�
   for (const { clause, probe } of all) {
     assert.ok(tpl.includes(probe), `变更记录里「${clause}」的探针「${probe}」在模板里搜不到`);
   }
+});
+
+// 上面那条锁的 `all.length > 0` 只挡得住「一行都没解析出来」。真实的失效方式是
+// **少解析一行**：那一条探针从此不被任何锁检查，而整份测试照样全绿。
+// 这条锁盯的是解析器本身：合法写法要解析出来，解析不了要报错，不许静默跳过。
+test("探针表解析：单元格里的 \\| 是合法写法，不许被静默跳过", () => {
+  const table = [
+    "| 条款 | 在哪一节 | 探针 | 为什么加 |",
+    "|---|---|---|---|",
+    "| 新条款 | 文档规则 | `A \\| B` | 多人档。说明 |",
+    "| 老条款 | Implementation | `记进 backlog` | 常驻。说明 |",
+  ].join("\n");
+
+  const rows = parseProbeTable(table);
+  assert.equal(rows.length, 2, "带 \\| 的那一行被吞了——它的探针从此不受任何锁检查");
+  assert.equal(rows[0].probe, "A | B", "转义没还原成竖线，拿去搜模板永远搜不到");
+  assert.equal(rows[0].tier, "多人");
+
+  // 反方向：真正切不出四列的行必须炸，不许当没看见。
+  assert.throws(
+    () => parseProbeTable("| 条款 | 在哪一节 | 探针 | 为什么加 |\n|---|---|---|---|\n| 缺一列 | 文档规则 | `x` |"),
+    /切不出四列/,
+    "列数不对的行被静默跳过了",
+  );
 });
 
 test("变更记录的每条都标了档——upgrade 第 2 步靠它判断该不该补", () => {

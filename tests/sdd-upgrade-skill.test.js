@@ -109,6 +109,17 @@ test("动作一只加不改：逐字复制、保持原有顺序、一个字都�
   assert.ok(text.includes("等用户点头"), "没要求逐条摆给用户确认就动手");
 });
 
+test("已分流仓库即使只做条款对齐，也必须修掉旧的根状态入口", () => {
+  const text = skill();
+  const beforeActions = text.slice(0, text.indexOf("## 动作一"));
+  assert.ok(
+    beforeActions.includes("只选动作一") && beforeActions.includes("已经是分流"),
+    "兼容检查只藏在形态迁移里——用户只选条款对齐时会跳过，旧根路径继续和分流入口打架",
+  );
+  assert.ok(beforeActions.includes("docs/loops/status.md"), "没点名要清掉的是哪个旧根状态入口");
+  assert.ok(text.includes("分流状态入口兼容检查"), "前置要求没有落到一个可执行的检查步骤");
+});
+
 // 归档按流分不是整齐，是判据：check 拿 loop- + lastClosedLoop 当前缀去归档根里扫，
 // 共用一个归档根时 A 流会去校验 B 流的文档——错误归属，成片假警报。
 test("形态迁移：归档必须跟着按流分，理由是判据不是整齐", () => {
@@ -127,6 +138,21 @@ test("形态迁移：全程 git mv，activeLoop 的值不动", () => {
   assert.ok(/git mv/.test(text), "没要求 git mv——cp + rm 会断掉历史，以后追溯不到需求是什么时候确认的");
   assert.ok(text.includes("`activeLoop` 的值不动"), "没说清编号不变，会有人顺手当成关 Loop 重编号");
   assert.ok(text.includes("只把**现有的那条**安置好"), "没有「按需长出来」，迁移会一次建七条空流");
+});
+
+test("形态迁移默认不改任何阶段文档里的 Loop 引用", () => {
+  const text = skill();
+  const start = text.indexOf("**阶段文档（");
+  const end = text.indexOf("）里的「Loop N」默认不改", start);
+  assert.ok(start !== -1 && end !== -1, "没有明确阶段文档里的 Loop 引用默认不改");
+  const protectedDocs = text.slice(start, end);
+  for (const stage of DEFAULT_CONVENTION.stageDocs) {
+    assert.ok(
+      protectedDocs.includes(stage),
+      `阶段文档保护清单漏了 ${stage}.md——它可能被静默改正文却保留旧 confirmed`,
+    );
+  }
+  assert.ok(text.includes("重新留痕"), "用户真要改 confirmed 文档时，没有要求重新走确认留痕");
 });
 
 test("边界：不删、不动业务内容、不替人确认、不解决矛盾、一次只升一个仓库", () => {
