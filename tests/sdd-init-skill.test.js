@@ -26,6 +26,66 @@ const read = (name) => fs.readFileSync(path.join(SKILL_DIR, name), "utf8");
 const skill = () => read("SKILL.md");
 const agentsTemplate = () => read("AGENTS.md.template");
 const claudeTemplate = () => read("CLAUDE.md.template");
+const changelog = () => read("AGENTS.md.CHANGELOG.md");
+
+/**
+ * 模板里 HTML 注释的区间。注释块**不许嵌套**：第一个 `-->` 就闭合了外层，
+ * 后面的内容会当成正文渲染出来。实测踩过——顶部引导块里写了一个字面的
+ * 「<!-- 源项目迁移 -->」当例子，整块后半截漏到了正文里。
+ */
+function commentRanges(text) {
+  const ranges = [];
+  let i = 0;
+  for (;;) {
+    const open = text.indexOf("<!--", i);
+    if (open === -1) break;
+    const close = text.indexOf("-->", open + 4);
+    assert.notEqual(close, -1, `第 ${open} 个字符处的注释没有闭合`);
+    ranges.push([open, close + 3]);
+    i = close + 3;
+  }
+  return ranges;
+}
+
+/** 去掉全部注释之后的正文——「这一条默认在不在场」看的是这份。 */
+function liveText(text) {
+  let out = "";
+  let at = 0;
+  for (const [open, close] of commentRanges(text)) {
+    out += text.slice(at, open);
+    at = close;
+  }
+  return out + text.slice(at);
+}
+
+/**
+ * 变更记录里的探针表。`sdd-upgrade` 拿这些原话去用户的 `AGENTS.md` 里搜，
+ * 搜不到才提示补。所以探针必须在模板里真的搜得到——探针写错一个字，
+ * upgrade 会报一条「缺失」，而那条其实一直在。假警报比漏报更致命。
+ */
+function probes() {
+  const out = [];
+  for (const line of changelog().split("\n")) {
+    if (!line.startsWith("|")) continue;
+    const cells = line.split("|").map((c) => c.trim());
+    if (cells.length !== 6) continue;
+    const [, clause, , cell, why] = cells;
+    if (clause === "条款" || /^-+$/.test(clause)) continue;
+    const probe = cell.replace(/^`|`$/g, "").replace(/\\`/g, "`");
+    const tier = why.includes("常驻")
+      ? "常驻"
+      : why.includes("多人档")
+        ? "多人"
+        : why.includes("分流档")
+          ? "分流"
+          : null;
+    out.push({ clause, probe, tier });
+  }
+  return out;
+}
+
+/** 模板里三种标记的原话。测试自己写一份，两边各写一份才锁得住漂移。 */
+const MARKERS = ["源项目迁移", "单人开发：删掉", "单流：删掉"];
 
 /** loop-check 执行的那条规则的原话。模板和判定必须是同一句。 */
 const ENFORCED_RULE = "如果状态文件、活跃目录和阶段文档互相矛盾，应停止相关工作并请求用户确认。";
@@ -55,7 +115,18 @@ test("skill 存在且有 frontmatter（name/description 是 pi 注册的硬要�
 // 真名会被宿主当成生效的规则文件读走，于是这个包自己的仓库规则变成了别人的规则。
 test("模板文件在场，且不用会被宿主自动读走的真名", () => {
   const names = fs.readdirSync(SKILL_DIR).sort();
-  assert.deepEqual(names, ["AGENTS.md.template", "CLAUDE.md.template", "SKILL.md"]);
+  assert.deepEqual(names, [
+    "AGENTS.md.CHANGELOG.md",
+    "AGENTS.md.template",
+    "CLAUDE.md.template",
+    "SKILL.md",
+  ]);
+  // 上面那条清单锁的是「加文件要是有意的」；这一条锁的才是它的**用意**：
+  // skill 目录会被软链进 ~/.claude/skills/ 等落点，叫真名的文件会被宿主当成
+  // 生效的规则文件读走。清单被人顺手改宽时，这一条还在。
+  for (const real of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md.template"]) {
+    assert.ok(!names.includes(real), `${real} 是宿主会自动读走的真名，不能出现在 skill 目录里`);
+  }
 });
 
 test("模板留了占位符，落地时必须替换（写死项目名等于把上一个项目的上下文发给所有人）", () => {
@@ -129,7 +200,10 @@ test("术语分家：模板把「源项目迁移」和「数据模型变更」�
   const text = agentsTemplate();
   assert.ok(text.includes("源项目迁移"), "A 类的标记名没改——和 schema 变更撞名，会被一起删");
   assert.ok(!text.includes("迁移类项目才保留"), "旧的含糊标记还在");
-  assert.ok(text.includes("别一起删"), "落地引导没交代两者的去留差别");
+  // 「别一起删」在引导块里现在也被三档协作形态用着，单锁它会被那句话空绿满足。
+  // 锁「每轮属性」才落在这一条的本意上：源项目迁移是项目属性，迁完就没了；
+  // 数据模型变更与确认留痕是每轮属性，任何项目都不许删。
+  assert.ok(text.includes("每轮属性"), "落地引导没交代「项目属性 vs 每轮属性」的去留差别");
 });
 
 // SKILL 让 agent「删掉标了 X 的行」，X 必须是模板里真的存在的标记串。
@@ -289,4 +363,117 @@ test("污染与冷启动分开：读不出来时不许初始化，更不许覆�
   const text = skill();
   assert.ok(text.includes("判据读不出来"), "污染分支没交代");
   assert.ok(text.includes("不要初始化"), "污染时「不要初始化」丢了——覆盖一个被污染的状态文件会毁掉冲突现场");
+});
+
+// ---------------------------------------------------------------- 协作形态三档
+
+test("三种标记：模板和 SKILL 用的是同一批原话", () => {
+  const tpl = agentsTemplate();
+  const sk = skill();
+  for (const marker of MARKERS) {
+    assert.ok(tpl.includes(marker), `模板里没有「${marker}」这个标记`);
+    assert.ok(sk.includes(marker), `SKILL 没提「${marker}」——agent 不知道要找这个串，一行也删不掉`);
+  }
+});
+
+// 标记有两个方向，搞反了后果不对称：
+//   「源项目迁移」= 要**加**什么，默认不在；
+//   「单人开发：删掉」「单流：删掉」= 要**删**什么，默认就在。
+// 实测把多人/分流条款写成了注释掉的（默认不在），于是多人项目落地之后门禁上少一条，
+// 而文件看起来完全正常。漏删只是多几句用不上的话，漏加是门禁上少一条。
+test("方向：多人档与分流档的条款默认在场，是正文不是注释", () => {
+  const live = liveText(agentsTemplate());
+  const conditional = probes().filter((p) => p.tier === "多人" || p.tier === "分流");
+  assert.ok(conditional.length > 0, "变更记录里一条多人/分流条款都没有，这条锁就空了");
+  for (const { clause, probe, tier } of conditional) {
+    assert.ok(
+      live.includes(probe),
+      `「${clause}」（${tier}档）在模板里被注释掉了或不在场——默认不在就等于漏加，${tier}项目落地后门禁少一条`,
+    );
+  }
+});
+
+// 常驻条款一旦被标上删除标记，单人/单流项目 init 时会连它一起删掉。
+// 已有一条同形状的锁盯着 schema 变更（见上），这条把范围推广到变更记录里所有常驻条款。
+test("常驻条款所在的行不带任何删除标记——带了就会被 init 顺手删掉", () => {
+  const lines = agentsTemplate().split("\n");
+  const resident = probes().filter((p) => p.tier === "常驻");
+  assert.ok(resident.length > 0, "变更记录里一条常驻条款都没有，这条锁就空了");
+  for (const { clause, probe } of resident) {
+    const line = lines.find((l) => l.includes(probe));
+    assert.ok(line, `模板里找不到常驻条款「${clause}」`);
+    for (const marker of ["单人开发：删掉", "单流：删掉"]) {
+      assert.ok(
+        !line.includes(marker),
+        `常驻条款「${clause}」被标成了「${marker}」，单人/单流项目会连它一起删：${line}`,
+      );
+    }
+  }
+});
+
+// sdd-upgrade 的动作一整个建立在这张表上：探针搜得到 = 已经有了，搜不到 = 候选。
+// 探针写错一个字，upgrade 会去劝用户补一条其实一直都在的条款——正是假警报的形状。
+test("变更记录的每条探针都能在模板里搜到，否则 upgrade 会报出并不存在的缺口", () => {
+  const tpl = agentsTemplate();
+  const all = probes();
+  assert.ok(all.length > 0, "从变更记录里一条探针都没解析出来，这条锁就空了");
+  for (const { clause, probe } of all) {
+    assert.ok(tpl.includes(probe), `变更记录里「${clause}」的探针「${probe}」在模板里搜不到`);
+  }
+});
+
+test("变更记录的每条都标了档——upgrade 第 2 步靠它判断该不该补", () => {
+  for (const { clause, tier } of probes()) {
+    assert.ok(
+      tier,
+      `「${clause}」没写清是常驻/多人档/分流档，upgrade 只能一律补，单人仓库会被塞进用不上的条款`,
+    );
+  }
+});
+
+// 第一个 `-->` 就闭合了外层注释，后面的内容会当成正文渲染出来。
+// 实测踩过：顶部引导块里写了一个字面的注释当例子，整块后半截漏进了用户的 AGENTS.md 正文。
+test("模板的注释不许嵌套，也不许不闭合", () => {
+  const text = agentsTemplate();
+  for (const [open, close] of commentRanges(text)) {
+    const inner = text.slice(open + 4, close - 3);
+    assert.ok(
+      !inner.includes("<!--"),
+      `第 ${open} 个字符处的注释里还套了一个 <!--，外层会被第一个 --> 提前闭合，后半截会漏进正文`,
+    );
+  }
+});
+
+test("SKILL 第 2 步问两问，判据是「范围能不能切分」而不是「几个人」", () => {
+  const text = skill();
+  assert.ok(text.includes("确定协作形态"), "第 2 步「确定协作形态」丢了");
+  assert.ok(text.includes("能各自独立交付的子系统"), "问一没有用「能不能切分」的判据");
+  assert.ok(text.includes("不是「几个人」"), "没有显式排除人数判据——它两个方向都有反例，是最容易被回退成的问法");
+  assert.ok(
+    text.includes("先单流") && text.includes("现在就分流"),
+    "问二（现在分流还是先单流）丢了——多人默认就会被当成必须分流",
+  );
+  assert.ok(text.includes("默认建议单流"), "问二没给默认值，新仓库一开局会背上七条空流");
+  // 多人 + 单流是个正常形态，不是过渡态：删「单流」不等于删「多人」。
+  assert.ok(text.includes("不是过渡态"), "没写清「多人 + 单流」是正常形态，两档会被当成一档一起删");
+});
+
+test("SKILL 第 1 步先勘察子系统，再拿勘察结果去问——空对空问用户答不上来", () => {
+  const text = skill();
+  assert.ok(text.includes("勘察，不是提问"), "「先勘察再提问」的理由丢了");
+  const scan = text.indexOf("有没有能各自独立交付的子系统");
+  const ask = text.indexOf("确定协作形态");
+  assert.ok(scan !== -1 && ask !== -1 && scan < ask, "子系统勘察排在提问之后了——顺序反了问出来的是空气");
+});
+
+test("已初始化的仓库分派给 sdd-upgrade，且那个 skill 真的在包里", () => {
+  const text = skill();
+  assert.match(text, /^---\n[\s\S]*?sdd-upgrade[\s\S]*?\n---\n/, "frontmatter 的 description 没把老仓库排除出去");
+  assert.ok(text.includes("已经初始化过了"), "第 0 步没有「已初始化」这个分支");
+  assert.ok(
+    fs.existsSync(path.resolve(SKILL_DIR, "../sdd-upgrade/SKILL.md")),
+    "SKILL 把用户指向 sdd-upgrade，但那个 skill 不在包里",
+  );
+  // 两条安全规则方向相反，塞进一份 skill 打输的会是安全的那条。
+  assert.ok(text.includes("不覆盖已存在的东西"), "没写清为什么升级不能是 init 的一个分支");
 });

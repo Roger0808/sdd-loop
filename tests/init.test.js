@@ -30,6 +30,12 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CLI = path.join(REPO_ROOT, "scripts/sdd-loop.mjs");
 
 /**
+ * 本包要装的 skill。**测试自己写的一份期望值**，不从 package.json 也不从被测代码读——
+ * 两边各写一份，才锁得住「有人顺手把一个 skill 从 pi.skills 里删了/漏登记了」。
+ */
+const SKILLS = ["sdd-init", "sdd-interview", "sdd-upgrade"];
+
+/**
  * 造一个假 home。参数决定哪几个宿主「装在这台机器上」。
  * `agentsHost` 传一个宿主 id（codex / cursor / kimi …），建出它的检测目录。
  */
@@ -86,13 +92,13 @@ const agentsHost = (plan) => plan.hosts.find((h) => h.id === "agents");
 
 // ---------------------------------------------------------------- 装得上
 
-test("冷启动：空 home 里两个 skill 都待建，动手后软链真的指向本包", () => {
+test("冷启动：空 home 里所有 skill 都待建，动手后软链真的指向本包", () => {
   const home = fakeHome({ pi: false });
   const plan = planFor(home);
   const before = claudeHost(plan);
 
-  assert.equal(before.items.length, 2, "本包有两个 skill，计划里应该都在");
-  assert.ok(before.items.every((i) => i.state === "ready"), "空 home 里两个都该是待建");
+  assert.deepEqual(before.items.map((i) => i.name).sort(), SKILLS, "本包的每个 skill 都该在计划里");
+  assert.ok(before.items.every((i) => i.state === "ready"), "空 home 里全都该是待建");
   assert.ok(hasWork(plan), "有活要干");
 
   const results = applyPlan(plan);
@@ -256,11 +262,7 @@ test("每个走开放标准的宿主都能单独触发共享落点，且软链�
     assert.equal(host.dir, path.join(home, ".agents", "skills"), "落点是开放标准的共用用户级目录");
 
     assert.ok(applyPlan(plan).every((r) => r.ok));
-    assert.deepEqual(
-      fs.readdirSync(host.dir).sort(),
-      ["sdd-init", "sdd-interview"],
-      `${id}：共享落点里该正好两个 skill`,
-    );
+    assert.deepEqual(fs.readdirSync(host.dir).sort(), SKILLS, `${id}：共享落点里该正好装齐这几个 skill`);
     for (const item of host.items) {
       assert.ok(fs.lstatSync(item.target).isSymbolicLink());
       assert.ok(
@@ -362,7 +364,7 @@ test("Claude Code 单独走自己的落点，与共享落点不重叠", () => {
   applyPlan(planFor(home));
 
   for (const dir of [path.join(home, ".claude", "skills"), path.join(home, ".agents", "skills")]) {
-    assert.deepEqual(fs.readdirSync(dir).sort(), ["sdd-init", "sdd-interview"], `${dir} 没装齐`);
+    assert.deepEqual(fs.readdirSync(dir).sort(), SKILLS, `${dir} 没装齐`);
   }
   assert.equal(fs.existsSync(path.join(home, ".codex", "skills")), false, "不该再往品牌目录里装");
 });

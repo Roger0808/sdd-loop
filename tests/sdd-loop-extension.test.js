@@ -192,3 +192,82 @@ test("判定只有一份：扩展 import 判定与口径，不许自己再长一
   // 锁 import 来源而不是字符串出现——注释里解释「为什么不用它」是合法且必要的。
   assert.ok(!/from\s+["'][^"']*spec-file/.test(src), "不许 import src/render/spec-file.js——它的解析器会静默吞冲突标记");
 });
+
+// ---------------------------------------------------------------- 分流：两个表面同一个结论
+
+/** 分流 fixture：每条流一份状态文件，各自的 Loop 目录。 */
+function makeStreamRepo(streams) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-ext-streams-"));
+  for (const [name, spec] of Object.entries(streams)) {
+    write(root, `docs/loops/${name}/status.md`, spec.status ?? `---\nproject: t\ndocument: loop-status\nactiveLoop: 1\n---\n\n# x\n`);
+    for (const [rel, content] of Object.entries(spec.files ?? {})) write(root, `docs/loops/${name}/${rel}`, content);
+  }
+  return root;
+}
+
+test("sdd_loop_check：分流仓库逐流报，一条读不出来不吃掉另一条的结论", { skip }, async () => {
+  const { tools } = await loadExtension();
+  const root = makeStreamRepo({
+    maker: { files: { "loop-1/requirements.md": doc("confirmed") } },
+    "admin-console": { status: "---\nproject: t\n<<<<<<< HEAD\nactiveLoop: 1\n=======\nactiveLoop: 2\n>>>>>>> x\n---\n" },
+  });
+  const result = await tools.get("sdd_loop_check").execute("t", { repo: root }, null, null, { cwd: root });
+  const text = toolText(result);
+
+  assert.equal(result.details.report.mode, "streams");
+  assert.ok(text.includes("流 maker"), "每条流要有自己的小节");
+  assert.ok(text.includes("流 admin-console"), text);
+  assert.ok(text.includes("干净"), "maker 是干净的，结论必须照给");
+  assert.ok(text.includes("读不出来"), "admin-console 读不出来要说出来");
+  assert.deepEqual(result.details.report.unreadableStreams, ["admin-console"]);
+});
+
+test("sdd_loop_check：stream 参数只判指名那条", { skip }, async () => {
+  const { tools } = await loadExtension();
+  const root = makeStreamRepo({
+    maker: { files: { "loop-1/requirements.md": doc("confirmed") } },
+    "admin-console": { status: "---\n<<<<<<< HEAD\nactiveLoop: 1\n---\n" },
+  });
+  const result = await tools.get("sdd_loop_check").execute("t", { repo: root, stream: "maker" }, null, null, { cwd: root });
+  assert.deepEqual(result.details.report.streams.map((s) => s.name), ["maker"]);
+  assert.equal(result.details.report.ok, true);
+  assert.ok(!toolText(result).includes("admin-console"), "指名一条流时，别的流不该出现在输出里");
+});
+
+test("sdd_loop_check：stream 打错名字说清是打错了，不说成冷启动", { skip }, async () => {
+  const { tools } = await loadExtension();
+  const root = makeStreamRepo({ maker: { files: { "loop-1/requirements.md": doc("confirmed") } } });
+  const result = await tools.get("sdd_loop_check").execute("t", { repo: root, stream: "mkaer" }, null, null, { cwd: root });
+  const text = toolText(result);
+  assert.ok(text.includes("mkaer"), "要点名是哪个名字没找到");
+  assert.ok(text.includes("maker"), "要把真实有哪些流列出来");
+  assert.ok(!text.includes("还没有 SDD Loop 结构"), "打错流名不是冷启动——那会让人去初始化一个已初始化的仓库");
+});
+
+test("单流仓库在扩展面的输出与 details 形状原样不动（向后兼容）", { skip }, async () => {
+  const { tools } = await loadExtension();
+  const root = makeRepo();
+  const result = await tools.get("sdd_loop_check").execute("t", { repo: root }, null, null, { cwd: root });
+  const report = result.details.report;
+  assert.equal(report.mode, undefined, "单流时 details.report 仍是那份单流报告本身，不是聚合对象");
+  assert.equal(report.readable, true);
+  assert.equal(typeof report.statusPath, "string");
+  assert.ok(!toolText(result).includes("流 "), "单流输出里不该冒出流的小节");
+});
+
+test("两个表面报同一个结论：CLI 与扩展在同一个分流仓库上给出一致的判定", { skip }, async () => {
+  // 渲染可以不同，判定必须同源。两个表面各判各的正是这个包最不想要的东西。
+  const { tools } = await loadExtension();
+  const { buildRepoCheckReport } = await import("../src/validation/loop-check.js");
+  const root = makeStreamRepo({
+    maker: { files: { "loop-1/requirements.md": doc("confirmed") } },
+    "admin-console": { status: `---\nproject: t\ndocument: loop-status\nactiveLoop: 9\n---\n\n# x\n` },
+  });
+  const result = await tools.get("sdd_loop_check").execute("t", { repo: root }, null, null, { cwd: root });
+  const direct = buildRepoCheckReport(root);
+  assert.deepEqual(
+    result.details.report.streams.map((s) => [s.name, s.report.ok]),
+    direct.streams.map((s) => [s.name, s.report.ok]),
+  );
+  assert.equal(result.details.report.severity, direct.severity);
+});

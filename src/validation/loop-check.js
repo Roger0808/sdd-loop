@@ -14,8 +14,11 @@
  *   advisory(0) 只报事实，不影响结论（C5 就是这一档，理由见下）
  */
 
-import { scanLoopRepo } from "../loop/repo-scan.js";
+import path from "node:path";
+
+import { scanLoopRepo, discoverStreams } from "../loop/repo-scan.js";
 import { isBlank } from "../loop/front-matter.js";
+import { conventionForStream } from "../loop/convention.js";
 
 const SEVERITY = Object.freeze({ unusable: "unusable", problem: "problem", advisory: "advisory" });
 
@@ -180,6 +183,83 @@ export function buildLoopCheckReport(repoRoot, overrides = {}) {
     advisories,
     nextStep,
   };
+}
+
+/**
+ * 把各条流已经下好的结论收拢成一个。**这里不下任何新结论**——
+ * 只做两件算术：谁可读、问题共几处。判定散进聚合层，就是「CLI 和工具各判各的」的下一站。
+ */
+function aggregate(mode, entries) {
+  // 一条流读不出来**不能吃掉另一条流的结论**：readable 问的是「有没有流给出了结论」，
+  // 不是「是不是所有流都可读」。顺手写成后者，会让一条流的合并冲突瘫痪整个仓库的门禁。
+  const readable = entries.filter((e) => e.report.readable);
+  const unreadable = entries.filter((e) => !e.report.readable);
+  const problemCount = readable.reduce((n, e) => n + e.report.problems.length, 0);
+  return {
+    repoRoot: entries[0].report.repoRoot,
+    mode,
+    streams: entries,
+    readable: readable.length > 0,
+    unreadableStreams: unreadable.map((e) => e.name),
+    ok: unreadable.length === 0 && problemCount === 0,
+    // 取各流中最坏的一档：unusable(2) > problem(1) > ok(0)。
+    severity: unreadable.length ? SEVERITY.unusable : problemCount ? SEVERITY.problem : null,
+    problemCount,
+  };
+}
+
+/**
+ * 仓库级入口：发现流 → 每条流各调一次 buildLoopCheckReport → 收拢。
+ *
+ * `buildLoopCheckReport` 的单流判定语义原样不动——单流仓库走的还是它那条原路，
+ * 分流走新路，两条路共用同一个判定函数。把单流做成分流的特例听起来更整洁，
+ * 代价是单流仓库的输出会变，而向后兼容在这件事上优先于内部整洁。
+ *
+ * @param {string} repoRoot 仓库根
+ * @param {object} overrides 约定覆盖（见 src/loop/convention.js）
+ * @param {{stream?: string}} options 指名只判一条流
+ */
+export function buildRepoCheckReport(repoRoot, overrides = {}, options = {}) {
+  const requested = options.stream;
+  const found = discoverStreams(repoRoot, overrides);
+
+  if (requested) {
+    // 这一段是**参数校验**，不是对仓库下结论：指名了一条盘上没有的流，
+    // 走下去只会得到「这个仓库还没有 SDD Loop 结构，去初始化吧」——把打错的流名
+    // 说成冷启动，用户会照着去初始化一个已经初始化过的仓库。
+    if (!found.streams.includes(requested)) {
+      return {
+        repoRoot: path.resolve(repoRoot),
+        mode: found.mode,
+        streams: [],
+        readable: false,
+        unknownStream: requested,
+        availableStreams: found.streams,
+        ok: false,
+        severity: SEVERITY.unusable,
+        problemCount: 0,
+      };
+    }
+    // requestedStream 让表面能说清「只判了这一条」。少了它，抬头只能写「分流：1 条」——
+    // 而仓库里可能有七条，那是一句假话，读者据此以为自己看全了。
+    return {
+      ...aggregate("streams", [
+        { name: requested, report: buildLoopCheckReport(repoRoot, conventionForStream(requested, overrides)) },
+      ]),
+      requestedStream: requested,
+    };
+  }
+
+  if (found.mode === "single") {
+    return aggregate("single", [{ name: null, report: buildLoopCheckReport(repoRoot, overrides) }]);
+  }
+  return aggregate(
+    "streams",
+    found.streams.map((name) => ({
+      name,
+      report: buildLoopCheckReport(repoRoot, conventionForStream(name, overrides)),
+    })),
+  );
 }
 
 export { SEVERITY };

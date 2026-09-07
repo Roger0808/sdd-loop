@@ -12,7 +12,7 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLoopCheckReport } from "../src/validation/loop-check.js";
+import { buildRepoCheckReport } from "../src/validation/loop-check.js";
 import { runInit } from "./lib/init.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
@@ -26,7 +26,7 @@ const AGENTS_SERVED = AGENTS_HOSTS.map((h) => h.label).join(" / ");
 const HELP = `sdd-loop — SDD Loop 的两件仪器
 
 用法：
-  sdd-loop check [--repo <dir>] [--status-file <path>] [--archive-dir <path>] [--json]
+  sdd-loop check [--repo <dir>] [--stream <name>] [--status-file <path>] [--archive-dir <path>] [--json]
   sdd-loop guide [--type <doc.clause>] [--repo <dir>] [--docs-dir <path>] [--json]
   sdd-loop init -g [--claude] [--agents] [--pi] [--show]
 
@@ -44,6 +44,10 @@ check：把状态文件的「声明」和文件里的「事实」摆在一起比
   --repo          仓库根，默认当前目录
   --status-file   状态文件相对仓库根的路径，默认 docs/loops/status.md
   --archive-dir   归档根目录，默认 docs/archive
+  --stream        只判这一条流，退出码也只反映它
+  分流是发现出来的，不用配置：状态文件在根上就是单流；不在、而下一层的子目录里有，
+  那些子目录就是各自独立的流（各有 activeLoop、各有门禁、归档各自一个子目录）。
+  多流时逐流报结论——一条流读不出来，其余各流的结论照给。
 
 guide：写之前给要求。「我要写这一类东西，该写哪几项」+ 本仓库现有编号族 + 参考写法。
   不带 --type 时列出全部可用类型。只在写之前给要求，不做事后判定。
@@ -76,11 +80,12 @@ function parseArgs(argv) {
 
 const STATUS_MARK = { true: "✅", false: "❌" };
 
-function renderText(report) {
+/**
+ * 一条流的正文（不含「仓库 / 状态文件」那两行抬头）。
+ * 拆出来是为了分流模式能把同一份文案按流分节复用——**单流的输出因此一个字都没变**。
+ */
+function renderReportBody(report) {
   const lines = [];
-  lines.push(`仓库 ${report.repoRoot}`);
-  lines.push(`状态文件 ${report.statusPath}`);
-  lines.push("");
 
   if (!report.readable) {
     const coldStart = report.reason === "missing-status";
@@ -136,6 +141,40 @@ function renderText(report) {
     lines.push("");
     lines.push("规则要求：状态文件、活跃目录与阶段文档矛盾时，应停止相关工作并请求用户确认。");
   }
+  return lines.join("\n");
+}
+
+function renderText(report) {
+  return [`仓库 ${report.repoRoot}`, `状态文件 ${report.statusPath}`, "", renderReportBody(report)].join("\n");
+}
+
+/** 分流模式：每条流一个小节，各渲染各的结论；最后汇总，不改任何一条流的结论。 */
+function renderRepoText(repo) {
+  const lines = [];
+  lines.push(`仓库 ${repo.repoRoot}`);
+  // 指名了 --stream 时抬头必须说清「只判了这一条」。写成「分流：1 条」是句假话：
+  // 仓库里可能有七条，这一趟只判了一条——而抬头正是读者用来判断「有没有漏看」的那一行。
+  const names = repo.streams.map((s) => s.name).join(" / ");
+  lines.push(repo.requestedStream ? `只判一条流：${names}（--stream）` : `分流：${repo.streams.length} 条（${names}）`);
+  lines.push("");
+
+  for (const { name, report } of repo.streams) {
+    lines.push(`── 流 ${name} ──`);
+    lines.push(`状态文件 ${report.statusPath}`);
+    lines.push("");
+    lines.push(renderReportBody(report));
+    lines.push("");
+  }
+
+  const parts = [];
+  if (repo.unreadableStreams.length) {
+    parts.push(`${repo.unreadableStreams.join(" / ")} 的判据读不出来（这几条不给结论）`);
+  }
+  if (repo.problemCount) {
+    const scope = repo.unreadableStreams.length ? "其余各流" : "各流";
+    parts.push(`${scope}共 ${repo.problemCount} 处声明与事实不符`);
+  }
+  lines.push(parts.length ? `总结论：${parts.join("；")}。` : "总结论：各流都干净。");
   return lines.join("\n");
 }
 
@@ -224,13 +263,31 @@ function runCheck(args) {
   if (args["status-file"]) overrides.statusFile = args["status-file"];
   if (args["archive-dir"]) overrides.archiveDir = args["archive-dir"];
 
-  const report = buildLoopCheckReport(repoRoot, overrides);
+  const repo = buildRepoCheckReport(repoRoot, overrides, { stream: args.stream });
 
-  if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  else process.stdout.write(`${renderText(report)}\n`);
+  if (repo.unknownStream) {
+    const available = repo.availableStreams.length
+      ? `本仓库的流：${repo.availableStreams.join(" / ")}`
+      : "本仓库不是分流形态——没有发现任何流，--stream 无从谈起。";
+    process.stderr.write(`没有名为 ${repo.unknownStream} 的流。${available}\n`);
+    process.exit(EXIT_UNUSABLE);
+  }
 
-  if (!report.readable) process.exit(EXIT_UNUSABLE);
-  process.exit(report.ok ? EXIT_OK : EXIT_CONTENT);
+  // 单流原路返回：报告对象、文案、JSON 形状与分流引入之前**逐字相同**。
+  // 这个包是全局安装的，已经在跑的单流仓库不该因为别人要分流而输出变样。
+  if (repo.mode === "single") {
+    const report = repo.streams[0].report;
+    if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    else process.stdout.write(`${renderText(report)}\n`);
+    if (!report.readable) process.exit(EXIT_UNUSABLE);
+    process.exit(report.ok ? EXIT_OK : EXIT_CONTENT);
+  }
+
+  if (args.json) process.stdout.write(`${JSON.stringify(repo, null, 2)}\n`);
+  else process.stdout.write(`${renderRepoText(repo)}\n`);
+
+  if (repo.severity === "unusable") process.exit(EXIT_UNUSABLE);
+  process.exit(repo.ok ? EXIT_OK : EXIT_CONTENT);
 }
 
 function main() {

@@ -22,7 +22,8 @@
     ],
     "skills": [
       "./skills/sdd-init",
-      "./skills/sdd-interview"
+      "./skills/sdd-interview",
+      "./skills/sdd-upgrade"
     ]
   },
   "scripts": {

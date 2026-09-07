@@ -6,6 +6,8 @@
  * 这是「不硬编码别人的约定」那条的落点：默认值是便利，不是前提。
  */
 
+import path from "node:path";
+
 export const DEFAULT_CONVENTION = Object.freeze({
   /** 状态文件相对仓库根的路径。活跃 Loop 目录按它的所在目录解析。 */
   statusFile: "docs/loops/status.md",
@@ -43,7 +45,13 @@ export const DEFAULT_CONVENTION = Object.freeze({
   /** 状态文件必须有的键。缺了就没法判——直接算读不出来。 */
   requiredStatusFields: Object.freeze(["activeLoop"]),
 
-  /** 状态文件认识的键。用于提示拼写错误，不作为错误。 */
+  /**
+   * 状态文件认识的键。用于提示拼写错误，不作为错误。
+   *
+   * `stream` / `owner` 是分流形态下的**认领信息**：谁在这条流上干活。
+   * 它们是意图不是事实，判定一律不读——工具不判断意图（那是 AGENTS.md 的规则在管），
+   * 列在这里只是为了它们不被当成拼写错误。
+   */
   knownStatusFields: Object.freeze([
     "activeLoop",
     "lastClosedLoop",
@@ -53,6 +61,8 @@ export const DEFAULT_CONVENTION = Object.freeze({
     "updatedAt",
     "project",
     "document",
+    "stream",
+    "owner",
   ]),
 });
 
@@ -60,4 +70,26 @@ export const DEFAULT_CONVENTION = Object.freeze({
 export function resolveConvention(overrides = {}) {
   const source = overrides && typeof overrides === "object" ? overrides : {};
   return Object.freeze({ ...DEFAULT_CONVENTION, ...source });
+}
+
+/**
+ * 分流：把一条流的名字解析成它自己的一份 overrides。
+ *
+ * 两条派生规则，都不是风格偏好：
+ * - 状态文件 = `<状态文件所在目录>/<流名>/<状态文件名>`——流目录的判据就是「里面有这个文件」，
+ *   所以发现与解析必须用同一套推导，否则会出现「发现得了、判不了」。
+ * - 归档根 = `<archiveDir>/<流名>`。C3 是拿 `loop-` + lastClosedLoop 当前缀去 archiveDir 里扫的
+ *   （见 repo-scan.js 的归档段）。多条流共用一个归档根时，A 流声明 lastClosedLoop: 1 会扫到
+ *   B 流的 `loop-1-*`，然后去校验**别人**的阶段文档状态——错误归属，成片假警报。
+ *
+ * 这一份推导是发现、判定、表面共用的唯一入口：各算各的就是「两处都改才对、只改了一处」的来源。
+ */
+export function conventionForStream(streamName, overrides = {}) {
+  const base = resolveConvention(overrides);
+  const source = overrides && typeof overrides === "object" ? overrides : {};
+  return {
+    ...source,
+    statusFile: path.join(path.dirname(base.statusFile), streamName, path.basename(base.statusFile)),
+    archiveDir: path.join(base.archiveDir, streamName),
+  };
 }

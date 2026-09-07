@@ -35,6 +35,7 @@
 | 文档写着「已完成」,代码里根本没有 | 把状态文件的**声明**和文件里的**事实**摆一起比,不一致直接列出来 |
 | 每次写条款格式都不一样,编号也对不上 | 写之前查口径:这类条款该写哪几项、本仓库已有哪些编号族 |
 | 聊到一半 AI 忘了前面说过什么 | 每一站的产出立刻落盘成文档,不靠对话记忆 |
+| 一个人的 Loop 开着,别人的活只能绕过门禁做 | 按子系统拆成多条流,各有各的状态、门禁和归档（[怎么做](#多人并行)） |
 
 ## 安装
 
@@ -46,7 +47,7 @@ npm link
 sdd-loop init -g
 ```
 
-`init -g` 把 `skills/sdd-init` 和 `skills/sdd-interview` 装进这台机器上检测到的宿主,没检测到的跳过。下表 10 个走 Agent Skills 开放标准的宿主**共用同一份软链**——装一次,它们都发现得到。
+`init -g` 把 `skills/sdd-init`、`skills/sdd-interview` 和 `skills/sdd-upgrade` 装进这台机器上检测到的宿主,没检测到的跳过。下表 10 个走 Agent Skills 开放标准的宿主**共用同一份软链**——装一次,它们都发现得到。
 
 | 宿主 | 落点 | 初始化仓库 | 走访谈 |
 |---|---|---|---|
@@ -64,6 +65,8 @@ sdd-loop init -g
 | pi | `pi install` 登记本包 | `/sdd init` | `/sdd` |
 
 ⚠️ Cursor 有多份「不跟进软链」的报告,本包正是软链装法——装上了也可能发现不了。
+
+还有第三个 skill **sdd-upgrade**，管**已经**在跑 SDD Loop 的仓库：把它建好之后模板里新加的门禁条款补齐，或者从单流改成分流。触发方式同上（说「升级 SDD 规则」，或 `/sdd-upgrade`）。从没初始化过的仓库不走它，走 sdd-init。
 
 `sdd-loop check` 与 `sdd-loop guide` 在哪个宿主里敲法都一样;pi 里也可以用内置的 `sdd_loop_check` / `sdd_spec_guide` 工具。
 
@@ -104,6 +107,7 @@ sdd-loop init -g --show     # 只看要做什么，不动手
 ```bash
 sdd-loop check                    # 当前仓库
 sdd-loop check --repo <dir>       # 指定仓库
+sdd-loop check --stream <name>    # 只看一条流（见下）
 sdd-loop check --json             # 机器可读
 ```
 
@@ -174,6 +178,38 @@ sdd-loop guide --type specification.entity-table
 ```
 
 路径是默认值:目录约定不同,用 `sdd-loop check --status-file <path>` / `--archive-dir <path>` 指过去。
+
+<details>
+<summary>多人并行</summary>
+
+一个仓库、一份状态、一个活跃 Loop——这是一把全仓库的锁。一个人的 Loop 开着，别人的活就只能在门禁外面做。
+
+按「能各自独立交付的子系统」拆成多条**流**，每条流各有各的状态文件、门禁和归档：
+
+```
+你的项目/
+└── docs/
+    ├── loops/
+    │   ├── maker/
+    │   │   ├── status.md
+    │   │   └── loop-1/
+    │   └── admin-console/
+    │       ├── status.md
+    │       └── loop-2/
+    └── archive/
+        ├── maker/
+        └── admin-console/
+```
+
+不用加配置文件：根上那份状态文件挪走，`sdd-loop check` 自己就发现得了，然后逐流报结论。**一条流读不出来，不影响其余各流给结论。**只想看一条用 `--stream <名字>`。
+
+Loop 编号是流内的，`maker/loop-1` 和 `admin-console/loop-1` 是两个不同的 Loop，提到时要带流名。条款编号（`REQ-001`）不受影响——它们只在同一条流内部互相引用。
+
+先按单流起步，真撞上锁再拆；迁移就是挪目录，sdd-upgrade 会带着你走。
+
+**拆流不会逼任何人进门禁。**它移除的是借口，不是可能性——一个压根没建流的子系统照样能悄悄发布。那部分是 AGENTS.md 的规则在管。
+
+</details>
 
 ## 许可
 

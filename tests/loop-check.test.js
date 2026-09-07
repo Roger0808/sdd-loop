@@ -14,8 +14,10 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
-import { buildLoopCheckReport } from "../src/validation/loop-check.js";
+import { buildLoopCheckReport, buildRepoCheckReport } from "../src/validation/loop-check.js";
 import { readFrontMatter } from "../src/loop/front-matter.js";
+import { discoverStreams } from "../src/loop/repo-scan.js";
+import { conventionForStream } from "../src/loop/convention.js";
 
 function git(dir, args) {
   execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
@@ -265,4 +267,157 @@ test("front-matter：没有结束的 --- 不算解析成功", () => {
   const { ok, issues } = readFrontMatter("---\nstatus: draft\n\n# 正文\n");
   assert.equal(ok, false);
   assert.equal(issues.at(-1).kind, "unterminated");
+});
+
+// ---------------------------------------------------------------- 分流
+//
+// 一半锁「分流认得出来、判得对」，一半锁「单流一个字都没变」。后一半更要紧：
+// 这个包是全局安装的，已经在跑的单流仓库不该因为别人要分流而输出变样。
+
+/** 分流 fixture：每条流一份状态文件，各自的 Loop 目录与归档。 */
+function makeStreamRepo(streams) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-streams-"));
+  for (const [name, spec] of Object.entries(streams)) {
+    write(root, `docs/loops/${name}/status.md`, spec.status ?? statusFile({ activeLoop: 1, lastClosedLoop: "null" }));
+    for (const [rel, content] of Object.entries(spec.files ?? {})) write(root, `docs/loops/${name}/${rel}`, content);
+    for (const [rel, content] of Object.entries(spec.archive ?? {})) write(root, `docs/archive/${name}/${rel}`, content);
+  }
+  git(root, ["init", "-q"]);
+  git(root, ["add", "-A"]);
+  git(root, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"]);
+  return root;
+}
+
+const okStream = { files: { "loop-1/requirements.md": doc("confirmed") } };
+
+test("分流发现：根上有状态文件就是单流，子目录看都不看", () => {
+  // 向后兼容的落点。这一条挂了，所有已经在跑的单流仓库都会换一条路走。
+  const root = makeRepo((r) => write(r, "docs/loops/maker/status.md", statusFile()));
+  assert.deepEqual(discoverStreams(root), { mode: "single", streams: [] });
+});
+
+test("分流发现：根上没有、下一层有状态文件的子目录就是流，按名排序", () => {
+  const root = makeStreamRepo({ maker: okStream, "admin-console": okStream });
+  assert.deepEqual(discoverStreams(root), { mode: "streams", streams: ["admin-console", "maker"] });
+});
+
+test("分流发现不误报：判据是「里面有状态文件」，不是「是个目录」", () => {
+  // 状态文件所在目录下将来会有别的东西（语料、说明、脚本）。按目录判会把它们全认成流，
+  // 然后每一个都报「这个仓库还没有 SDD Loop 结构」——成片假警报。
+  const root = makeStreamRepo({ maker: okStream });
+  write(root, "docs/loops/notes/README.md", "# 随手记");
+  write(root, "docs/loops/loop-templates/requirements.md", doc("draft"));
+  write(root, "docs/loops/说明.md", "不是目录");
+  assert.deepEqual(discoverStreams(root).streams, ["maker"], "只有带状态文件的那个才是流");
+});
+
+test("分流发现：一条流都没有时按单流走，好让冷启动照常报 missing-status", () => {
+  // 「一条都没发现」和「发现了但读不出来」必须可区分：前者去初始化，后者停下修文件。
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-empty-"));
+  assert.deepEqual(discoverStreams(root), { mode: "single", streams: [] });
+  const repo = buildRepoCheckReport(root);
+  assert.equal(repo.mode, "single");
+  assert.equal(repo.streams[0].report.reason, "missing-status");
+});
+
+test("聚合：单流仓库的报告形状与判定语义原样不动", () => {
+  const root = makeRepo();
+  const repo = buildRepoCheckReport(root);
+  assert.equal(repo.mode, "single");
+  assert.equal(repo.streams.length, 1);
+  assert.equal(repo.streams[0].name, null, "单流没有流名，不许编一个出来");
+  assert.deepEqual(repo.streams[0].report, buildLoopCheckReport(root), "单流走的必须还是原来那个判定函数");
+});
+
+test("聚合：每条流各判各的，结论互不代表", () => {
+  const root = makeStreamRepo({
+    maker: okStream,
+    "admin-console": { status: statusFile({ activeLoop: 7, lastClosedLoop: "null" }) },
+  });
+  const repo = buildRepoCheckReport(root);
+  assert.equal(repo.mode, "streams");
+  const byName = Object.fromEntries(repo.streams.map((s) => [s.name, s.report]));
+  assert.equal(byName.maker.ok, true, "maker 是干净的");
+  assert.equal(byName["admin-console"].ok, false, "admin-console 的 activeLoop 悬空");
+  assert.equal(repo.ok, false);
+  assert.equal(repo.severity, "problem");
+  assert.equal(repo.problemCount, 1);
+});
+
+test("聚合：一条流读不出来，其余各流仍然给结论", () => {
+  // 最容易实现错的一处。顺手写成「任一流不可读就整体不给结论」，
+  // 一条流的合并冲突就能瘫痪整个仓库的门禁。
+  const root = makeStreamRepo({
+    maker: okStream,
+    "admin-console": { status: "---\nproject: t\n<<<<<<< HEAD\nactiveLoop: 1\n=======\nactiveLoop: 2\n>>>>>>> x\n---\n" },
+  });
+  const repo = buildRepoCheckReport(root);
+  const maker = repo.streams.find((s) => s.name === "maker").report;
+  assert.equal(maker.readable, true, "maker 的判据没问题，结论必须照给");
+  assert.equal(maker.ok, true);
+  assert.equal(repo.readable, true, "有流给出了结论，整体就不是「没有结论」");
+  assert.deepEqual(repo.unreadableStreams, ["admin-console"]);
+  assert.equal(repo.severity, "unusable", "退出码取最坏的一档");
+});
+
+// 上一条里干净的那流没有矛盾，所以「取最坏」和「先看矛盾」给的是同一个答案——
+// 变异测试实测：把两档的判断顺序对调，上一条照样绿。这一条把两种坏同时摆上：
+// 一流读不出来 + 另一流有矛盾。读不出来必须压过矛盾，否则退出码从 2 掉到 1，
+// 而 2 和 1 的含义完全不同——1 是「去解决矛盾」，2 是「判据都读不出来，别信任何结论」。
+test("聚合：读不出来压过矛盾——两种坏同时在时取最坏的那一档", () => {
+  const root = makeStreamRepo({
+    maker: { status: statusFile({ activeLoop: 7, lastClosedLoop: "null" }) },
+    "admin-console": { status: "---\nproject: t\n<<<<<<< HEAD\nactiveLoop: 1\n=======\nactiveLoop: 2\n>>>>>>> x\n---\n" },
+  });
+  const repo = buildRepoCheckReport(root);
+  assert.equal(repo.problemCount, 1, "maker 的 activeLoop 悬空，这一条矛盾要照样报出来");
+  assert.deepEqual(repo.unreadableStreams, ["admin-console"]);
+  assert.equal(repo.severity, "unusable", "两种坏同时在时取最坏：读不出来压过矛盾");
+});
+
+test("聚合：--stream 只判指名那条，别的流报红也不影响它", () => {
+  const root = makeStreamRepo({
+    maker: okStream,
+    "admin-console": { status: "---\n<<<<<<< HEAD\nactiveLoop: 1\n---\n" },
+  });
+  const repo = buildRepoCheckReport(root, {}, { stream: "maker" });
+  assert.deepEqual(repo.streams.map((s) => s.name), ["maker"]);
+  assert.equal(repo.ok, true);
+  assert.equal(repo.severity, null);
+});
+
+test("--stream 打错名字是参数错，不许说成「还没有 SDD Loop 结构」", () => {
+  // 走下去只会得到冷启动文案，用户会照着去初始化一个已经初始化过的仓库。
+  const root = makeStreamRepo({ maker: okStream });
+  const repo = buildRepoCheckReport(root, {}, { stream: "mkaer" });
+  assert.equal(repo.unknownStream, "mkaer");
+  assert.deepEqual(repo.availableStreams, ["maker"]);
+  assert.deepEqual(repo.streams, [], "没判任何流，就不该有流的结论");
+});
+
+test("归档按流分：A 流的 lastClosedLoop 不许扫到 B 流的归档（错误归属＝成片假警报）", () => {
+  // C3 是拿 `loop-` + lastClosedLoop 当前缀去归档根里扫的。共用一个归档根时，
+  // maker 声明 lastClosedLoop: 1 会扫到 admin-console 的 loop-1-*，然后去校验别人的文档。
+  const root = makeStreamRepo({
+    maker: {
+      status: statusFile({ activeLoop: "null", lastClosedLoop: 1, nextLoop: 2 }),
+      archive: { "loop-1-done/requirements.md": doc("archived") },
+    },
+    "admin-console": {
+      status: statusFile({ activeLoop: 1, lastClosedLoop: "null" }),
+      files: { "loop-1/requirements.md": doc("draft") },
+    },
+  });
+  const repo = buildRepoCheckReport(root);
+  const maker = repo.streams.find((s) => s.name === "maker").report;
+  assert.deepEqual(maker.problems, [], `maker 只该看自己的归档，实际报了：${JSON.stringify(maker.problems)}`);
+  assert.equal(repo.ok, true, "两条流各看各的，整体应当干净");
+});
+
+test("流名解析：状态文件与归档根一起下移一层，两处必须同源", () => {
+  const root = makeStreamRepo({ maker: okStream });
+  const over = conventionForStream("maker");
+  assert.equal(over.statusFile, path.join("docs", "loops", "maker", "status.md"));
+  assert.equal(over.archiveDir, path.join("docs", "archive", "maker"));
+  assert.equal(buildLoopCheckReport(root, over).statusPath, over.statusFile, "发现与判定得走同一套推导");
 });

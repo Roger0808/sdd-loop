@@ -14,6 +14,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 import { DEFAULT_CONVENTION } from "../src/loop/convention.js";
 
@@ -194,6 +195,43 @@ test("第 0 站开局捞 backlog：上一轮记下的欠账要逐条交用户拍
   );
 });
 
+// 分流仓库里第 0 站多一件事，而且顺序不能反：先知道自己在哪条流，才筛得出该摆哪几条
+// backlog。反过来先捞 backlog，只能把全仓库的欠账逐条摆一遍——噪音会让人开始整段跳过
+// 这个环节，而那个环节正是上一轮欠账唯一的出口。
+test("第 0 站先定流、再捞 backlog——顺序反了就只能把别人的欠账也摆一遍", () => {
+  const text = skillText();
+  const start = text.indexOf("### 第 0 站");
+  const section = text.slice(start, text.indexOf("\n### ", start + 1));
+
+  const decideStream = section.indexOf("这一轮属于哪条流");
+  const readBacklog = section.indexOf(BACKLOG_FILE);
+  assert.ok(decideStream !== -1, "第 0 站没有「先确定这一轮属于哪条流」——分流仓库里不知道该按谁的编号走");
+  assert.ok(readBacklog !== -1, `第 0 站没读 ${BACKLOG_FILE}`);
+  assert.ok(decideStream < readBacklog, "定流排在捞 backlog 之后了——顺序反了就筛不出该摆哪几条");
+  assert.ok(section.includes("只捞本流的条目和标了「跨流」的"), "没说清按流筛，别的流的欠账会被一起摆出来");
+  assert.ok(section.includes("单流就跳过"), "没给单流仓库的出口，单人项目会被问一个没有答案的问题");
+});
+
+// 开新流和建首个 Loop 目录是同一个坑的两个实例：中间态是红的。
+// 只建 status.md 不建 requirements.md，check 会报活跃 Loop 悬空；
+// 只建目录不建状态文件，那一刻仓库没有状态入口。
+test("开新流是第 0 站的活：status.md 与首个 requirements.md 同一次变更里建", () => {
+  const text = skillText();
+  assert.ok(text.includes("开一条新流也是第 0 站的活"), "没交代新流由谁建，分流仓库开第二条流时没有落点");
+  assert.ok(text.includes("同一次变更"), "没要求同一次变更——中间那一刻仓库是红的");
+  assert.ok(text.includes("悬空"), "没写清分开建的后果，下次还会有人先建一个空的流目录");
+  assert.ok(text.includes("流内编号从 1 开始"), "没说新流从 1 起步，会有人去续别的流的编号");
+});
+
+// 分流之后「Loop 2」有歧义，但条款编号没有——REQ-001 只在同一条流的文档族内部互相引用。
+// 给每个条款编号都套上流名是纯噪音，而噪音正是让人整段跳过的东西。
+test("只有 Loop 编号带流名：条款编号不套流名，套了是纯噪音", () => {
+  const text = skillText();
+  assert.ok(text.includes("要带流名的只有 Loop 编号"), "没有把范围限定在 Loop 编号上");
+  assert.ok(text.includes("不存在跨流引用"), "没给出条款编号不带流名的理由，下次会被「统一一下」");
+  assert.ok(/`[a-z-]+\/loop-\d`/.test(text), "没给带流名的 Loop 写法示例，抽象规则挡不住裸写「Loop 2」");
+});
+
 // 事故里模型报的是「第 0/1 站完成」——它自己认为完成了。没有「完成」的定义，
 // 「跳过了六个问题」和「问完了」在它眼里长得一样。这条门禁给「完成」下定义。
 test("站级门禁在场：有该问没问的，这一站就不算完成", () => {
@@ -316,4 +354,28 @@ test("pi.skills 显式列出本包技能，且与 skills/ 下的真目录一一�
     .map((entry) => `./skills/${entry.name}`)
     .sort();
   assert.deepEqual([...pkg.pi.skills].sort(), realSkills, "skills/ 下的真目录（非符号链接）必须与 pi.skills 一一对应");
+});
+
+// 上一条只证明「目录在这台机器的盘上」。而 .gitignore 里 `skills/*` 是全忽略 +
+// 逐个放行的白名单——新加的 skill 漏进白名单，本机全绿、仓库里却根本没有这个目录，
+// 装了包的人拿到的是一份少一个 skill 的安装。实测发生过：sdd-upgrade 写完之后
+// git status 里连个 untracked 都没有。
+test("pi.skills 里的每个 skill 都真的进了仓库，没被 .gitignore 的白名单漏掉", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+  for (const rel of pkg.pi.skills) {
+    const dir = rel.replace(/^\.\//, "");
+
+    // 已跟踪：这是最终要的那件事。上一条锁只证明目录在这台机器的盘上。
+    const tracked = spawnSync("git", ["-C", REPO_ROOT, "ls-files", "--", dir], { encoding: "utf8" });
+    assert.ok(
+      tracked.stdout.trim().length > 0,
+      `${dir} 一个文件都没被 git 跟踪——它在 pi.skills 里，装了包的人却拿不到它`,
+    );
+
+    // 忽略规则本身也要放行：`git check-ignore` 默认跳过已在索引里的路径，
+    // 所以必须加 --no-index，否则这条锁在文件提交之后就永远绿了（实测空绿）。
+    // 它管的是**以后**——白名单漏掉这个目录时，新加进来的文件 git add 不进去。
+    const ignored = spawnSync("git", ["-C", REPO_ROOT, "check-ignore", "--no-index", "-q", `${dir}/SKILL.md`]);
+    assert.notEqual(ignored.status, 0, `.gitignore 的白名单没放行 ${dir}——往它里面新加的文件会被静默忽略`);
+  }
 });

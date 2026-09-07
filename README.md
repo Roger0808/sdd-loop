@@ -35,6 +35,7 @@ One-line request → 7-station interview → four spec documents → task breakd
 | A doc says "done" and the code has nothing of the sort | Puts the status file's **claims** next to the **facts** on disk and lists every mismatch |
 | Every clause comes out in a different shape, and the IDs don't line up | Look up the requirements before writing: which items this kind of clause needs, and which ID families this repo already uses |
 | Halfway through the chat the AI forgets what was agreed | Each station's output lands on disk right away — nothing depends on conversation memory |
+| One person's Loop is open, so everyone else works outside the gates | Split the repo into one stream per subsystem: each has its own status, gate and archive ([how](#several-teams-in-one-repo)) |
 
 ## Installation
 
@@ -46,7 +47,7 @@ npm link
 sdd-loop init -g
 ```
 
-`init -g` links `skills/sdd-init` and `skills/sdd-interview` into the hosts it detects and skips the ones it doesn't. The 10 hosts below that follow the Agent Skills open standard **share a single symlink** — install once and all of them find it.
+`init -g` links `skills/sdd-init`, `skills/sdd-interview` and `skills/sdd-upgrade` into the hosts it detects and skips the ones it doesn't. The 10 hosts below that follow the Agent Skills open standard **share a single symlink** — install once and all of them find it.
 
 | Host | Install path | Init a repo | Run the interview |
 |---|---|---|---|
@@ -64,6 +65,8 @@ sdd-loop init -g
 | pi | `pi install` registers the package | `/sdd init` | `/sdd` |
 
 ⚠️ Cursor has several reports of not following symlinks, and symlinks are exactly how this package installs — it may not be discovered there.
+
+A third skill, **sdd-upgrade**, brings a repo that is *already* running SDD Loop up to the current rules — new gate clauses that landed in the template after it was set up, or the switch from one stream to several. Trigger it the same way ("upgrade the SDD rules", `/sdd-upgrade`). Repos that have never been initialized go through sdd-init instead.
 
 `sdd-loop check` and `sdd-loop guide` are typed the same way in every host; pi also ships them as the built-in `sdd_loop_check` / `sdd_spec_guide` tools.
 
@@ -104,6 +107,7 @@ Step 2 can also be "I already have a PRD, turn it into SDD" — the outline is t
 ```bash
 sdd-loop check                    # current repo
 sdd-loop check --repo <dir>       # a specific repo
+sdd-loop check --stream <name>    # just one stream (see below)
 sdd-loop check --json             # machine-readable
 ```
 
@@ -174,6 +178,38 @@ your-project/
 ```
 
 Those paths are defaults: if your layout differs, point at it with `sdd-loop check --status-file <path>` / `--archive-dir <path>`.
+
+<details>
+<summary>Several teams in one repo</summary>
+
+One repo, one status file, one active Loop — that is a lock on the whole repo. While one person's Loop is open, everyone else ships outside the gates.
+
+Split it into one **stream** per independently shipped subsystem. Each stream gets its own status file, its own gate, its own archive:
+
+```
+your-project/
+└── docs/
+    ├── loops/
+    │   ├── maker/
+    │   │   ├── status.md
+    │   │   └── loop-1/
+    │   └── admin-console/
+    │       ├── status.md
+    │       └── loop-2/
+    └── archive/
+        ├── maker/
+        └── admin-console/
+```
+
+No config file to add: drop the root status file and `sdd-loop check` discovers the streams and reports each one separately. **A stream that can't be read never withholds the other streams' verdicts.** `--stream <name>` narrows it to one.
+
+Loop numbers are per stream, so `maker/loop-1` and `admin-console/loop-1` are different Loops — write the stream name when you refer to one. Clause IDs (`REQ-001`) are unaffected: they only ever reference each other inside one stream.
+
+Start single-stream and split later if you hit the lock; the migration is a directory move, and sdd-upgrade walks you through it.
+
+**Splitting does not force anyone through the gate.** It removes the excuse, not the possibility — a subsystem with no stream of its own still ships unnoticed. That part is what the AGENTS.md rules are for.
+
+</details>
 
 ## License
 

@@ -22,7 +22,7 @@ import {
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 // @ts-expect-error src 是纯 ESM JS，无类型声明
-import { buildLoopCheckReport } from "../../src/validation/loop-check.js";
+import { buildRepoCheckReport } from "../../src/validation/loop-check.js";
 // @ts-expect-error
 import { guideFor, listGuideTypes } from "../../src/spec-guide/dictionary.js";
 // @ts-expect-error
@@ -39,8 +39,8 @@ function truncate(text: string): string {
 
 const STATUS_MARK: Record<string, string> = { true: "✅", false: "❌" };
 
-/** check 报告的扩展侧渲染。文案这里出，结论一个字都不新造。 */
-function renderCheck(report: any): string {
+/** 一条流的正文。文案这里出，结论一个字都不新造。 */
+function renderCheckBody(report: any): string {
 	const lines: string[] = [];
 	if (!report.readable) {
 		// 两种成因分叉。曾经这里无条件说「被污染…先请人解决文件本身」，
@@ -90,6 +90,42 @@ function renderCheck(report: any): string {
 	return lines.join("\n");
 }
 
+/**
+ * check 报告的扩展侧渲染。
+ *
+ * 与 CLI 表面共用 buildRepoCheckReport 这一个判定源：渲染可以不同，**结论必须同源**。
+ * 两个表面各判各的，正是这个包最不想要的东西。
+ */
+function renderRepoCheck(repo: any): string {
+	if (repo.unknownStream) {
+		const available = repo.availableStreams.length
+			? `本仓库的流：${repo.availableStreams.join(" / ")}`
+			: "本仓库不是分流形态——没有发现任何流，stream 参数无从谈起。";
+		return `没有名为 ${repo.unknownStream} 的流。${available}`;
+	}
+	// 单流原路返回：输出与分流引入之前逐字相同。
+	if (repo.mode === "single") return renderCheckBody(repo.streams[0].report);
+
+	// 指名了 stream 时抬头说清「只判了这一条」：写「分流：1 条」是句假话，
+	// 仓库里可能有七条，而抬头正是读者用来判断有没有漏看的那一行。
+	const names = repo.streams.map((s: any) => s.name).join(" / ");
+	const head = repo.requestedStream ? `只判一条流：${names}（stream 参数）` : `分流：${repo.streams.length} 条（${names}）`;
+	const lines: string[] = [head];
+	for (const { name, report } of repo.streams) {
+		lines.push("", `## 流 ${name}（${report.statusPath}）`, "", renderCheckBody(report));
+	}
+
+	const parts: string[] = [];
+	if (repo.unreadableStreams.length) {
+		parts.push(`${repo.unreadableStreams.join(" / ")} 的判据读不出来（这几条不给结论）`);
+	}
+	if (repo.problemCount) {
+		parts.push(`${repo.unreadableStreams.length ? "其余各流" : "各流"}共 ${repo.problemCount} 处声明与事实不符`);
+	}
+	lines.push("", parts.length ? `总结论：${parts.join("；")}。` : "总结论：各流都干净。");
+	return lines.join("\n");
+}
+
 const FORM_LABEL: Record<string, string> = { "two-part": "两段式", "three-part": "三段式", "wildcard-only": "仅通配引用" };
 
 function renderGuide(type: string, entry: any, idScan: any, example: any): string {
@@ -125,15 +161,17 @@ export default function (pi: ExtensionAPI) {
 		name: "sdd_loop_check",
 		label: "SDD Loop 状态对账",
 		description:
-			"把状态文件的「声明」和文件里的「事实」摆在一起比：状态文件读不读得出来（front-matter 冲突/重复键/未闭合）、activeLoop 是否悬空指针、已关闭 Loop 的阶段文档是否全部 archived、当前卡在哪道门禁、下一步该做什么。每轮 Loop 开局跑一次。只读，不改任何文件；发现矛盾时停下来请人确认，不替人改状态。",
+			"把状态文件的「声明」和文件里的「事实」摆在一起比：状态文件读不读得出来（front-matter 冲突/重复键/未闭合）、activeLoop 是否悬空指针、已关闭 Loop 的阶段文档是否全部 archived、当前卡在哪道门禁、下一步该做什么。仓库是单流还是分流（多个系统各推各的 Loop）由它自己发现，分流时逐流报结论。每轮 Loop 开局跑一次。只读，不改任何文件；发现矛盾时停下来请人确认，不替人改状态。",
 		promptSnippet: "SDD Loop 开局读状态：声明与事实是否一致",
 		promptGuidelines: [
 			"每轮 Loop 开始时先跑 sdd_loop_check 再动手。",
 			"结论是「判据读不出来」（文件在但被污染）时，不许猜状态，先把文件问题摆给人。",
 			"结论是「还没有 SDD Loop 结构」时不要报错更不要停工——那是冷启动的正常起点：问过用户后加载 sdd-init skill 建结构（AGENTS.md 门禁规则 / CLAUDE.md / 状态文件），再重跑检查。",
+			"分流仓库里，一条流读不出来不影响其余各流的结论：照常按你所在的那条流干活，把读不出来的那条摆给人，不要拿它当整个仓库停工的理由。",
 		],
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: "仓库根，默认当前工作目录" })),
+			stream: Type.Optional(Type.String({ description: "分流仓库里只判这一条流；不传则逐流都判" })),
 			statusFile: Type.Optional(Type.String({ description: "状态文件相对仓库根的路径，默认 docs/loops/status.md" })),
 			archiveDir: Type.Optional(Type.String({ description: "归档根目录，默认 docs/archive" })),
 		}),
@@ -142,10 +180,12 @@ export default function (pi: ExtensionAPI) {
 			const overrides: Record<string, string> = {};
 			if (params.statusFile) overrides.statusFile = params.statusFile;
 			if (params.archiveDir) overrides.archiveDir = params.archiveDir;
-			const report = buildLoopCheckReport(repo, overrides);
+			const report = buildRepoCheckReport(repo, overrides, { stream: params.stream });
 			return {
-				content: [{ type: "text", text: truncate(renderCheck(report)) }],
-				details: { report },
+				content: [{ type: "text", text: truncate(renderRepoCheck(report)) }],
+				// 单流时 details.report 仍是那份单流报告本身，形状与分流引入之前相同；
+				// 分流时才给聚合对象，逐流报告在 .streams[].report 里。
+				details: { report: report.mode === "single" ? report.streams[0].report : report },
 			};
 		},
 	});

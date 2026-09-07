@@ -193,8 +193,8 @@ test("README 承诺的本地文件都存在（安装步骤与链接不许断）"
       if (!clean) continue;
       assert.ok(fs.existsSync(path.join(REPO_ROOT, clean)), `${file} 链接到 ${clean}，但文件不存在`);
     }
-    // 安装步骤软链的两个 skill 目录必须真的在包里。
-    for (const d of ["skills/sdd-init", "skills/sdd-interview"]) {
+    // 安装步骤软链的每个 skill 目录必须真的在包里。
+    for (const d of ["skills/sdd-init", "skills/sdd-interview", "skills/sdd-upgrade"]) {
       assert.ok(
         text.includes(d) && fs.existsSync(path.join(REPO_ROOT, d)),
         `${file} 的安装步骤引用了 ${d}，它必须真实存在`,

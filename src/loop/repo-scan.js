@@ -13,6 +13,39 @@ import { execFileSync } from "node:child_process";
 import { readFrontMatter, isBlank } from "./front-matter.js";
 import { resolveConvention } from "./convention.js";
 
+/**
+ * 分流发现：这个仓库是单流还是分流。只产出事实，不下结论。
+ *
+ * 靠**发现**不靠配置文件：这个包全局安装，sdd-init 已经在别的仓库产出过单流结构，
+ * 那些仓库必须继续按原样跑。新增一个 `.sdd-loop.json` 之类的配置面等于要求它们先改配置。
+ *
+ * @returns {{mode: "single"|"streams", streams: string[]}}
+ */
+export function discoverStreams(repoRoot, overrides = {}) {
+  const convention = resolveConvention(overrides);
+  const root = path.resolve(repoRoot);
+
+  // 根状态文件存在 = 单流。这一条排在最前，是向后兼容的落点：
+  // 已经在跑的单流仓库永远走原路，发现逻辑碰都不碰它。
+  if (fs.existsSync(path.join(root, convention.statusFile))) return { mode: "single", streams: [] };
+
+  const loopsDirAbs = path.join(root, path.dirname(convention.statusFile));
+  const statusName = path.basename(convention.statusFile);
+  const streams = [];
+  if (fs.existsSync(loopsDirAbs)) {
+    for (const entry of fs.readdirSync(loopsDirAbs)) {
+      // 判据是「这个子目录里有状态文件」，不是「它是个目录」——状态文件所在目录下
+      // 将来可能有别的东西（语料、说明、脚本），按目录判会把它们全认成流。
+      if (fs.existsSync(path.join(loopsDirAbs, entry, statusName))) streams.push(entry);
+    }
+  }
+  streams.sort();
+
+  // 一条流都没发现 → 仍然按单流走，好让 C1 原样报 missing-status（冷启动）。
+  // 「一条都没发现」和「发现了但某条读不出来」必须可区分：前者去初始化，后者停下修文件。
+  return streams.length ? { mode: "streams", streams } : { mode: "single", streams: [] };
+}
+
 /** git 只读查询；不是仓库、没装 git、命令失败都返回 null，让调用方降级而不是崩。 */
 function git(repoRoot, args) {
   try {

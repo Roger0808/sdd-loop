@@ -12,7 +12,11 @@ node_modules/
 .agents/
 
 # 维护者本机装的第三方 skill 会往 skills/ 里软链（曾提交进来 8 条指向
-# .agents/ 的死链）。本包只分发自己的两个 skill，白名单在这里定死。
+# .agents/ 的死链）。本包只分发自己的 skill，白名单在这里定死。
+# 加 skill 必须同时加进这份白名单和 package.json 的 pi.skills——
+# 只加一边的后果是静默的：本机测试全绿（目录在盘上），但仓库里根本没有这个目录。
+# tests/sdd-interview-skill.test.js 里有一条锁盯着两边。
 skills/*
 !skills/sdd-init/
 !skills/sdd-interview/
+!skills/sdd-upgrade/
