@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Node-%E2%89%A520-brightgreen.svg" alt="Node >= 20">
-  <img src="https://img.shields.io/badge/hosts-12-8A2BE2" alt="Hosts">
+  <img src="https://img.shields.io/badge/hosts-13-8A2BE2" alt="Hosts">
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
 
 ---
 
-One-line request → 7-station interview → four spec documents → task breakdown → code → verification → close this round, open the next. One full turn around that circle is a **Loop**.
+One-line request → 7-station interview → isolated-worktree implementation → automated verification → architecture reconciliation → AI review → human review → close this round. One full turn around that circle is a **Loop**.
 
 ## What it fixes
 
@@ -36,6 +36,8 @@ One-line request → 7-station interview → four spec documents → task breakd
 | Every clause comes out in a different shape, and the IDs don't line up | Look up the requirements before writing: which items this kind of clause needs, and which ID families this repo already uses |
 | Halfway through the chat the AI forgets what was agreed | Each station's output lands on disk right away — nothing depends on conversation memory |
 | One person's Loop is open, so everyone else works outside the gates | Split the repo into one stream per subsystem: each has its own status, gate and archive ([how](#several-teams-in-one-repo)) |
+| Code changed but the system architecture is still last quarter's picture | Maintain a long-lived Architecture Baseline under `docs/architecture/`, then reconcile it from final code before review |
+| Tests are green, so an AI calls the work done without reviewing the diff | Separate automated verification, read-only AI review and explicit human approval; only the last one closes the Loop |
 
 ## Installation
 
@@ -47,7 +49,7 @@ npm link
 sdd-loop init -g
 ```
 
-`init -g` links `skills/sdd-init`, `skills/sdd-interview` and `skills/sdd-upgrade` into the hosts it detects and skips the ones it doesn't. The 10 hosts below that follow the Agent Skills open standard **share a single symlink** — install once and all of them find it.
+`init -g` installs four skills: `skills/sdd-init`, `skills/sdd-interview`, `skills/sdd-upgrade`, and `skills/sdd-review`. It skips hosts it cannot detect. Ten open-standard hosts share `~/.agents/skills/`; Hermes reads that same directory through its supported `skills.external_dirs` setting.
 
 | Host | Install path | Init a repo | Run the interview |
 |---|---|---|---|
@@ -62,24 +64,26 @@ sdd-loop init -g
 | Antigravity | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
 | Factory Droid | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
 | Roo Code | `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
+| Hermes Agent | `${HERMES_HOME:-~/.hermes}/config.yaml` registers `~/.agents/skills/` | say "initialize SDD" | say "run the SDD interview" |
 | pi | `pi install` registers the package | `/sdd init` | `/sdd` |
 
 ⚠️ Cursor has several reports of not following symlinks, and symlinks are exactly how this package installs — it may not be discovered there.
 
-A third skill, **sdd-upgrade**, brings a repo that is *already* running SDD Loop up to the current rules — new gate clauses that landed in the template after it was set up, or the switch from one stream to several. During a split it also replaces obsolete root-status paths in `AGENTS.md`, but it does not silently rewrite confirmed stage documents; changing one is a separate, human-approved action that must renew its confirmation trail. Trigger it the same way ("upgrade the SDD rules", `/sdd-upgrade`). Repos that have never been initialized go through sdd-init instead.
+**sdd-upgrade** brings an existing repo up to current gates, converts single-stream layouts, or audits an existing AGENTS.md into a temporary Candidate. Candidate deletion, movement and merging require item-by-item approval; host/model configuration is never rewritten. **sdd-review** owns post-implementation closeout: architecture reconciliation, change surface, independent read-only AI review, and the human-review packet.
 
-`sdd-loop check` and `sdd-loop guide` are typed the same way in every host; pi also ships them as the built-in `sdd_loop_check` / `sdd_spec_guide` tools.
+`sdd-loop check` and `sdd-loop guide` are typed the same way in every host; pi also ships them as the built-in `sdd_loop_check` / `sdd_spec_guide` tools. In pi, use `/sdd upgrade` for upgrades and AGENTS audits, and `/sdd review` for review closeout; an unknown `/sdd` subcommand prints usage instead of starting an interview.
 
 ```bash
 sdd-loop init -g --claude   # only ~/.claude/skills/
 sdd-loop init -g --agents   # only ~/.agents/skills/ (shared by the other hosts above)
+sdd-loop init -g --hermes   # shared links + Hermes external_dirs registration
 sdd-loop init -g --pi       # only register with pi
 sdd-loop init -g --show     # dry run: say what would happen, touch nothing
 ```
 
-Re-running is safe: it **never deletes any existing file or directory**.
+Re-running is safe: it **never deletes any existing file or directory**. Hermes configuration is parsed as YAML, updated without duplicate paths, backed up before an existing file changes, and atomically replaced. Invalid YAML or an unexpected field type is reported and left untouched. This connects an existing Hermes installation; it does not install Hermes itself or place duplicate links in `~/.hermes/skills/`. Run it separately under each `HERMES_HOME` profile that should see the skills.
 
-**Restart the host** after installing so the new skills get loaded (Gemini also takes `/skills reload`).
+**Restart the host** after installing so the new skills get loaded (Gemini also takes `/skills reload`; Hermes loads them in a new session).
 
 <details>
 <summary>Upgrading from 0.x</summary>
@@ -97,8 +101,24 @@ Re-running is safe: it **never deletes any existing file or directory**.
 | **1. Initialize the repo** | once per repo | trigger sdd-init in the project ([per-host triggers](#installation)) |
 | **2. Run one interview** | once per Loop | trigger sdd-interview and walk the [7 stations](#the-7-station-interview) |
 | **3. Reconcile before you start** | every round | `sdd-loop check` |
+| **4. Implement** | every Loop | split repos use one branch + worktree per stream and Loop |
+| **5. Review and close** | every Loop | trigger sdd-review, then obtain explicit human approval |
 
 Step 2 can also be "I already have a PRD, turn it into SDD" — the outline is the same, and anything the PRD doesn't cover still gets asked.
+
+### Lifecycle gates
+
+`Requirements → Architecture + Architecture Baseline → Specification → Tasks → Worktree Ready → Implementation → Automated Verification → Architecture Reconciliation → AI Review → Human Review → Closed`
+
+The six stage documents and their status values remain unchanged; the added names are gates. Loop-local `architecture.md` describes this round's design. The long-lived Architecture Baseline describes the current system: reuse an existing `docs/architecture/` layout, otherwise use `docs/architecture/overview.md` for one system or `docs/architecture/<stream>.md` for split repos. Diagrams stay reviewable as Mermaid or ASCII.
+
+At Implementation start, `implementation.md` records the base branch, base commit, current branch and task scope—never a machine-local worktree path. After tests, the implementer updates the Baseline from final code and writes the code/config/data/API/deployment/test/documentation change surface. A separate read-only reviewer then produces `READY_FOR_HUMAN_REVIEW`, `CHANGES_REQUIRED`, or `NOT_REVIEWABLE_SAFELY`. Any material change invalidates that review. `verification.md` remains draft until a human records approver, time, reviewed version and fingerprint.
+
+In split repos, every stream + Loop uses its own branch and worktree; the main checkout is reserved for synchronization, integration and review. An already-running Loop may record a one-time exemption during sdd-upgrade, but the next Loop must use a worktree.
+
+When sdd-init finds no AGENTS.md, it classifies template applicability and writes the final workflow-organized file directly. When one exists, sdd-init/sdd-upgrade write the Candidate and classification report under `/tmp`, never overwrite it silently, and require per-item approval for deletion, movement or merging. The fixed classifications are `KEEP_SDD_CANONICAL`, `KEEP_PROJECT_SPECIFIC`, `DUPLICATED`, `STALE`, `MODEL_OR_HOST_SPECIFIC`, `BELONGS_IN_AGENT_CONFIG`, `CANONICAL_ELSEWHERE`, and `UNCLEAR`.
+
+An AGENTS audit emits exactly one conclusion: `RECOMMEND_ADOPTION`, `NEEDS_REVISION`, `KEEP_CURRENT`, or `NOT_TESTABLE_SAFELY`.
 
 ## Commands
 

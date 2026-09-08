@@ -140,6 +140,28 @@ test("形态迁移：全程 git mv，activeLoop 的值不动", () => {
   assert.ok(text.includes("只把**现有的那条**安置好"), "没有「按需长出来」，迁移会一次建七条空流");
 });
 
+test("worktree 迁移只允许当前已实施 Loop 一次性豁免，下一 Loop 不继承", () => {
+  const text = skill();
+  const start = text.indexOf("### 5. 建立 worktree 规则的过渡");
+  assert.ok(start !== -1, "缺少 worktree 迁移过渡规则");
+  const section = text.slice(start, text.indexOf("\n## ", start + 1));
+  assert.ok(section.includes("独立分支和 worktree"));
+  assert.ok(section.includes("已在主工作区进入 Implementation"));
+  assert.ok(section.includes("只对本 Loop 有效"));
+  assert.ok(section.includes("下一 Loop 不得继承"));
+  assert.ok(section.includes("尚未进入 Implementation 的 Loop 不得使用这个豁免"));
+});
+
+test("AGENTS 审计只生成 /tmp Candidate，删除移动合并逐项授权且不改宿主配置", () => {
+  const text = skill();
+  assert.ok(text.includes("AGENTS.md.AUDIT.md"));
+  assert.ok(text.includes("/tmp/sdd-loop-agents-<repo>-<timestamp>/"));
+  assert.ok(text.includes("删除、移动、合并逐项"));
+  for (const boundary of [".claude/", ".codex/", ".agents/", "模型", "权限", "MCP", "宿主配置"]) {
+    assert.ok(text.includes(boundary), `审计边界缺 ${boundary}`);
+  }
+});
+
 test("形态迁移默认不改任何阶段文档里的 Loop 引用", () => {
   const text = skill();
   const start = text.indexOf("**阶段文档（");

@@ -33,6 +33,7 @@ const NON_STAGE_DOC_ALLOWLIST = new Set([
   "CLAUDE.md",
   "SKILL.md",
   "README.md",
+  "overview.md",
 ]);
 
 /**

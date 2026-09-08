@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Node-%E2%89%A520-brightgreen.svg" alt="Node >= 20">
-  <img src="https://img.shields.io/badge/宿主-12%20个-8A2BE2" alt="Hosts">
+  <img src="https://img.shields.io/badge/宿主-13%20个-8A2BE2" alt="Hosts">
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
 
 ---
 
-一句话需求 → 七站访谈 → 四份规格文档 → 拆成任务 → 写代码 → 验证 → 关闭这一轮,再开下一轮。这一整圈叫一个 **Loop**。
+一句话需求 → 七站访谈 → 独立 worktree 实施 → 自动化验证 → 架构对账 → AI 审查 → 人工审查 → 关闭本轮。这一整圈叫一个 **Loop**。
 
 ## 它解决什么
 
@@ -36,6 +36,8 @@
 | 每次写条款格式都不一样,编号也对不上 | 写之前查口径:这类条款该写哪几项、本仓库已有哪些编号族 |
 | 聊到一半 AI 忘了前面说过什么 | 每一站的产出立刻落盘成文档,不靠对话记忆 |
 | 一个人的 Loop 开着,别人的活只能绕过门禁做 | 按子系统拆成多条流,各有各的状态、门禁和归档（[怎么做](#多人并行)） |
+| 代码已经变了，总体架构图还停在上个季度 | 长期维护 `docs/architecture/` 下的 Architecture Baseline，人工审查前按最终代码反向对账 |
+| 测试绿了，AI 就把本轮宣称为完成 | 把自动化验证、只读 AI 代码审查和人工明确通过分开，只有最后一道能关 Loop |
 
 ## 安装
 
@@ -47,7 +49,7 @@ npm link
 sdd-loop init -g
 ```
 
-`init -g` 把 `skills/sdd-init`、`skills/sdd-interview` 和 `skills/sdd-upgrade` 装进这台机器上检测到的宿主,没检测到的跳过。下表 10 个走 Agent Skills 开放标准的宿主**共用同一份软链**——装一次,它们都发现得到。
+`init -g` 安装四个 Skill：`skills/sdd-init`、`skills/sdd-interview`、`skills/sdd-upgrade` 和 `skills/sdd-review`。没检测到的宿主会跳过。十个开放标准宿主共用 `~/.agents/skills/`；Hermes 通过官方支持的 `skills.external_dirs` 读同一份。
 
 | 宿主 | 落点 | 初始化仓库 | 走访谈 |
 |---|---|---|---|
@@ -62,24 +64,26 @@ sdd-loop init -g
 | Antigravity | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
 | Factory Droid | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
 | Roo Code | `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
+| Hermes Agent | `${HERMES_HOME:-~/.hermes}/config.yaml` 登记 `~/.agents/skills/` | 说「初始化 SDD」 | 说「走 SDD 访谈」 |
 | pi | `pi install` 登记本包 | `/sdd init` | `/sdd` |
 
 ⚠️ Cursor 有多份「不跟进软链」的报告,本包正是软链装法——装上了也可能发现不了。
 
-还有第三个 skill **sdd-upgrade**，管**已经**在跑 SDD Loop 的仓库：把它建好之后模板里新加的门禁条款补齐，或者从单流改成分流。迁成分流时，它还会替换 `AGENTS.md` 里已经失效的根状态路径，但不会静默改写已确认的阶段文档；真要改，必须拆成用户单独点头并重新留确认痕迹的动作。触发方式同上（说「升级 SDD 规则」，或 `/sdd-upgrade`）。从没初始化过的仓库不走它，走 sdd-init。
+**sdd-upgrade** 负责老仓库的门禁对齐、单流转分流，以及对已有 AGENTS.md 生成临时 Candidate。Candidate 里的删除、移动和合并必须逐项授权，宿主/模型配置不会被改写。**sdd-review** 负责实施后收口：架构反向回写、change surface、独立只读 AI 审查和人工审查包。
 
-`sdd-loop check` 与 `sdd-loop guide` 在哪个宿主里敲法都一样;pi 里也可以用内置的 `sdd_loop_check` / `sdd_spec_guide` 工具。
+`sdd-loop check` 与 `sdd-loop guide` 在哪个宿主里敲法都一样；pi 里也可以用内置的 `sdd_loop_check` / `sdd_spec_guide` 工具。pi 中用 `/sdd upgrade` 进入升级与 AGENTS 审计，用 `/sdd review` 进入审查收口；未知 `/sdd` 子命令只返回用法，不误进访谈。
 
 ```bash
 sdd-loop init -g --claude   # 只装 ~/.claude/skills/
 sdd-loop init -g --agents   # 只装 ~/.agents/skills/（上表其余宿主共用这一份）
+sdd-loop init -g --hermes   # 共享软链 + Hermes external_dirs 登记
 sdd-loop init -g --pi       # 只登记进 pi
 sdd-loop init -g --show     # 只看要做什么，不动手
 ```
 
-重复跑是安全的:**绝不删任何已存在的文件或目录**。
+重复跑是安全的：**绝不删任何已存在的文件或目录**。Hermes 配置会按 YAML 解析，路径去重追加，改已有文件前备份并原子替换；YAML 损坏或字段类型异常时只报冲突、不覆盖。安装器只接入已安装的 Hermes，不下载 Hermes，也不往 `~/.hermes/skills/` 建重复软链。需要让多个 Hermes Profile 使用时，应分别在对应的 `HERMES_HOME` 下执行。
 
-装完**要重启宿主**才会加载到新 skill(Gemini 里也可以 `/skills reload`)。
+装完**要重启宿主**才会加载到新 Skill（Gemini 里也可以 `/skills reload`；Hermes 在新会话加载）。
 
 <details>
 <summary>从 0.x 升级</summary>
@@ -97,8 +101,24 @@ sdd-loop init -g --show     # 只看要做什么，不动手
 | **1. 初始化仓库** | 每个仓库一次 | 在项目里触发 sdd-init([各宿主的敲法](#安装)) |
 | **2. 走一轮访谈** | 每个 Loop 一次 | 触发 sdd-interview,走完[七站](#七站访谈) |
 | **3. 开工先对账** | 每轮开工 | `sdd-loop check` |
+| **4. 实施** | 每个 Loop | 分流项目每个 stream + Loop 单独分支和 worktree |
+| **5. 审查与关闭** | 每个 Loop | 触发 sdd-review，然后取得人工明确通过 |
 
 第 2 步也可以是「我已经有一份 PRD,帮我整理成 SDD」—— 大纲照走,原文里没有的照样要问你。
+
+### 生命周期门禁
+
+`Requirements → Architecture + Architecture Baseline → Specification → Tasks → Worktree Ready → Implementation → Automated Verification → Architecture Reconciliation → AI Review → Human Review → Closed`
+
+六份阶段文档和状态取值不变，新名称是门禁。Loop 内 `architecture.md` 写本轮方案；长期 Architecture Baseline 写系统当前总体事实。先沿用已有 `docs/architecture/` 结构；没有时，单系统用 `docs/architecture/overview.md`，分流用 `docs/architecture/<stream>.md`。架构图只用可评审的 Mermaid 或 ASCII。
+
+Implementation 开始时，`implementation.md` 记录基线分支、基线 commit、当前分支和任务范围，不记本机 worktree 路径。测试后，实施 Agent 按最终代码更新 Baseline，并写出代码/配置/数据/接口/部署/测试/文档改动面。独立只读 reviewer 只能输出 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED` 或 `NOT_REVIEWABLE_SAFELY`；关键事实一变，旧审查失效。`verification.md` 保持 draft，直到人工记录确认人、时间、审查版本和指纹。
+
+分流项目每个 stream + Loop 使用独立分支和 worktree，主工作区只做同步、集成和审查。已开工的存量 Loop 可在 sdd-upgrade 中记录一次性豁免，下一 Loop 必须使用 worktree。
+
+sdd-init 发现没有 AGENTS.md 时，会先按项目现状分类模板适用性，直接生成按工作流组织的最终文件。已有 AGENTS.md 时，sdd-init/sdd-upgrade 只在 `/tmp` 生成 Candidate 和逐项分类报告，不静默覆盖；删除、移动、合并必须逐项授权。固定分类是 `KEEP_SDD_CANONICAL`、`KEEP_PROJECT_SPECIFIC`、`DUPLICATED`、`STALE`、`MODEL_OR_HOST_SPECIFIC`、`BELONGS_IN_AGENT_CONFIG`、`CANONICAL_ELSEWHERE` 和 `UNCLEAR`。
+
+AGENTS 审计只输出一个结论：`RECOMMEND_ADOPTION`、`NEEDS_REVISION`、`KEEP_CURRENT` 或 `NOT_TESTABLE_SAFELY`。
 
 ## 命令
 

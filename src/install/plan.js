@@ -16,16 +16,18 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { parseDocument, isMap, isSeq, isScalar } from "yaml";
 
 /**
  * 写入目标。注意这是**落点**不是宿主列表：十几个宿主共用 `~/.agents/skills/`，
  * 一个落点服务一批。CLI 与测试都从这张表推导，不枚举 id。
  */
-export const HOST_IDS = ["claude", "agents", "pi"];
+export const HOST_IDS = ["claude", "agents", "hermes", "pi"];
 
 const HOST_LABEL = {
   claude: "Claude Code",
   agents: "开放标准宿主（共享落点）",
+  hermes: "Hermes Agent",
   pi: "pi",
 };
 
@@ -55,7 +57,7 @@ const exists = (...seg) => fs.existsSync(path.join(...seg));
  * Gemini CLI 按 PATH 上的命令判，Antigravity 按它自己在 `~/.gemini/` 里建的
  * `antigravity-ide/` 判。
  *
- * 没放进来的：OpenClaw、Cline、Kilo Code、Hermes、Mistral Vibe。前者本机只剩配置
+ * 没放进来的：OpenClaw、Cline、Kilo Code、Mistral Vibe。前者本机只剩配置
  * 目录、没有可执行体，验不了「它读不读共用目录」；后几个的 skill/规则落点是
  * **项目级**的，往那儿写就是写进用户的仓库——`init -g` 的边界之外。宁可漏报。
  */
@@ -196,23 +198,7 @@ function planSkillsDir(id, { home, skills, env }) {
 
   if (!verdict.detected) return { ...host, detected: false, reason: verdict.reason, items: [] };
 
-  const items = skills.map((skill) => {
-    const target = path.join(skillsDir, skill.name);
-    const stat = lstat(target);
-    if (!stat) return { ...skill, target, state: ITEM_READY };
-    if (stat.isSymbolicLink()) {
-      if (linksTo(target, skill.source)) return { ...skill, target, state: ITEM_ALREADY };
-      let points = "(读不出来)";
-      try {
-        points = fs.readlinkSync(target);
-      } catch {
-        /* 读不出来就照实说 */
-      }
-      return { ...skill, target, state: ITEM_OCCUPIED, detail: `已有软链指向 ${points}` };
-    }
-    // 真目录/真文件：可能是用户自己写的同名 skill。绝不删。
-    return { ...skill, target, state: ITEM_OCCUPIED, detail: "已存在同名的真实文件/目录（不是软链）" };
-  });
+  const items = planItems(skillsDir, skills);
 
   return { ...host, detected: true, items };
 }
@@ -248,6 +234,116 @@ function planPi({ home, packageRoot }) {
   return { ...host, detected: true, installed };
 }
 
+function hermesHome(home, env) {
+  const configured = env.HERMES_HOME;
+  if (!configured) return path.join(home, ".hermes");
+  if (configured === "~") return home;
+  if (configured.startsWith(`~${path.sep}`)) return path.join(home, configured.slice(2));
+  return path.resolve(configured);
+}
+
+function resolveHermesExternalDir(value, home, env) {
+  const expandedEnv = value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => env[name] ?? match);
+  return path.resolve(expandedEnv.replace(/^~(?=\/|$)/, home));
+}
+
+function planHermesConfig({ home, env, skills, includeLinks }) {
+  const root = hermesHome(home, env);
+  const configPath = path.join(root, "config.yaml");
+  const sharedDir = path.join(home, ".agents", "skills");
+  const detected = Boolean(env.HERMES_HOME) || exists(root) || binOnPath("hermes", env);
+  const host = {
+    id: "hermes",
+    label: HOST_LABEL.hermes,
+    kind: "hermes",
+    root,
+    configPath,
+    dir: sharedDir,
+    items: includeLinks ? planItems(sharedDir, skills) : [],
+  };
+  if (!detected) {
+    return { ...host, detected: false, reason: `PATH 上没有 hermes，也没有 ${root}——这台机器上看不到 Hermes Agent` };
+  }
+
+  let original = "";
+  if (exists(configPath)) {
+    try {
+      original = fs.readFileSync(configPath, "utf8");
+    } catch (err) {
+      return { ...host, detected: true, configState: ITEM_OCCUPIED, configDetail: `配置读不出来：${err.message}` };
+    }
+  }
+
+  const doc = parseDocument(original || "{}\n", { keepSourceTokens: true });
+  if (doc.errors.length) {
+    return { ...host, detected: true, configState: ITEM_OCCUPIED, configDetail: `config.yaml 不是可用 YAML：${doc.errors[0].message}` };
+  }
+  const skillsNode = doc.get("skills", true);
+  if (skillsNode != null && !isMap(skillsNode)) {
+    return { ...host, detected: true, configState: ITEM_OCCUPIED, configDetail: "skills 必须是 YAML mapping" };
+  }
+  const externalNode = doc.getIn(["skills", "external_dirs"], true);
+  let values = [];
+  if (externalNode == null) {
+    values = [];
+  } else if (isSeq(externalNode)) {
+    const js = externalNode.toJSON();
+    if (!js.every((value) => typeof value === "string")) {
+      return { ...host, detected: true, configState: ITEM_OCCUPIED, configDetail: "skills.external_dirs 必须是字符串列表" };
+    }
+    values = js;
+  } else if (isScalar(externalNode) && typeof externalNode.value === "string") {
+    values = [externalNode.value];
+  } else {
+    return { ...host, detected: true, configState: ITEM_OCCUPIED, configDetail: "skills.external_dirs 必须是字符串或字符串列表" };
+  }
+
+  const resolved = values.map((value) => resolveHermesExternalDir(value, home, env));
+  if (resolved.includes(sharedDir)) {
+    return { ...host, detected: true, configState: ITEM_ALREADY, proposedContent: original };
+  }
+  if (isSeq(externalNode)) {
+    externalNode.add("~/.agents/skills");
+  } else {
+    const externalComments = externalNode == null
+      ? null
+      : {
+          commentBefore: externalNode.commentBefore,
+          comment: externalNode.comment,
+          spaceBefore: externalNode.spaceBefore,
+        };
+    doc.setIn(["skills", "external_dirs"], doc.createNode([...values, "~/.agents/skills"]));
+    const updatedExternalNode = doc.getIn(["skills", "external_dirs"], true);
+    if (externalComments != null && updatedExternalNode != null) {
+      updatedExternalNode.commentBefore = externalComments.commentBefore;
+      updatedExternalNode.comment = externalComments.comment;
+      updatedExternalNode.spaceBefore = externalComments.spaceBefore;
+    }
+  }
+  return {
+    ...host,
+    detected: true,
+    configState: ITEM_READY,
+    proposedContent: String(doc),
+    configExisted: exists(configPath),
+  };
+}
+
+function planItems(skillsDir, skills) {
+  return skills.map((skill) => {
+    const target = path.join(skillsDir, skill.name);
+    const stat = lstat(target);
+    if (!stat) return { ...skill, target, state: ITEM_READY };
+    if (stat.isSymbolicLink()) {
+      if (linksTo(target, skill.source)) return { ...skill, target, state: ITEM_ALREADY };
+      let points = "(读不出来)";
+      try { points = fs.readlinkSync(target); } catch { /* 照实报 */ }
+      return { ...skill, target, state: ITEM_OCCUPIED, detail: `已有软链指向 ${points}` };
+    }
+    return { ...skill, target, state: ITEM_OCCUPIED, detail: "已存在同名的真实文件/目录（不是软链）" };
+  });
+}
+
 /**
  * 找出旧版留在品牌目录里的软链。**只认指向本包的软链**——用户自己放在那儿的
  * 同名目录、或指向别处的软链一律不报，那些不是我们造的，也轮不到我们评论。
@@ -274,7 +370,7 @@ export function findLegacyLinks({ home, skills }) {
  * @param {string} options.packageRoot 本包所在目录（软链的源、pi install 的参数）
  * @param {string} options.home        用户主目录
  * @param {string[]} [options.only]    只算这几个落点，缺省是全部
- * @param {object} [options.env]       环境变量（Gemini 靠 PATH 检测，测试要能控）
+ * @param {object} [options.env]       环境变量（Gemini/Hermes 靠 PATH，Hermes 还读 HERMES_HOME）
  */
 export function planInstall({ packageRoot, home, only, env = process.env }) {
   const wanted = only?.length ? HOST_IDS.filter((id) => only.includes(id)) : HOST_IDS;
@@ -295,9 +391,17 @@ export function planInstall({ packageRoot, home, only, env = process.env }) {
     };
   }
 
-  const hosts = wanted.map((id) =>
-    SKILLS_DIR_HOSTS[id] ? planSkillsDir(id, { home, skills, env }) : planPi({ home, packageRoot }),
-  );
+  const agents = wanted.includes("agents") ? planSkillsDir("agents", { home, skills, env }) : null;
+  const hosts = wanted.map((id) => {
+    if (id === "agents") return agents;
+    if (id === "hermes") {
+      // 普通开放标准宿主已计划这些软链时，Hermes 只补配置，
+      // 避免一次 init 对同一目标计划两次。只点 --hermes 时则由它自己建。
+      return planHermesConfig({ home, env, skills, includeLinks: !agents?.detected });
+    }
+    if (SKILLS_DIR_HOSTS[id]) return planSkillsDir(id, { home, skills, env });
+    return planPi({ home, packageRoot });
+  });
 
   return { packageRoot, home, skills, hosts, legacy: findLegacyLinks({ home, skills }), unusable: null };
 }
@@ -307,6 +411,7 @@ export function hasWork(plan) {
   return plan.hosts.some((host) => {
     if (!host.detected) return false;
     if (host.kind === "symlink") return host.items.some((i) => i.state === ITEM_READY);
+    if (host.kind === "hermes") return host.configState === ITEM_READY || host.items.some((i) => i.state === ITEM_READY);
     return host.installed === false;
   });
 }
@@ -314,7 +419,11 @@ export function hasWork(plan) {
 /** 计划里有没有占位冲突（人得先处理，安装器不越权）。 */
 export function hasConflict(plan) {
   return plan.hosts.some(
-    (host) => host.detected && host.kind === "symlink" && host.items.some((i) => i.state === ITEM_OCCUPIED),
+    (host) =>
+      host.detected &&
+      ((host.kind === "symlink" && host.items.some((i) => i.state === ITEM_OCCUPIED)) ||
+        (host.kind === "hermes" &&
+          (host.configState === ITEM_OCCUPIED || host.items.some((i) => i.state === ITEM_OCCUPIED)))),
   );
 }
 

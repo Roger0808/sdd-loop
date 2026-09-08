@@ -17,6 +17,18 @@
 
 ---
 
+## 2026-09-08 · Worktree、Architecture Baseline 与审查闭环
+
+| 条款 | 在哪一节 | 探针 | 为什么加 |
+|---|---|---|---|
+| 分流 worktree 隔离 | 流的划分与跨流改动 | `每个 stream + Loop 必须使用独立 Git 分支和 worktree` | 分流档。避免多条流在主工作区互相覆盖 |
+| 存量 Loop 豁免不继承 | 流的划分与跨流改动 | `豁免不得延续到下一个 Loop` | 分流档。当前已开工的 Loop 可安全过渡，但不得把过渡变成常态 |
+| 长期 Architecture Baseline | Architecture | `必须建立或审查长期 Architecture Baseline` | **常驻，任何项目都要补。**把本轮方案与系统当前总体事实分开 |
+| 实施基线 | Implementation | `必须在 \`implementation.md\` 记录基线分支` | **常驻，任何项目都要补。**没有基线就无法确定审查范围 |
+| 架构反向回写与 change surface | Verification | `自动化验证通过不等于代码审查通过` | **常驻，任何项目都要补。**人工审查前先把代码事实回写到架构 |
+| 独立 AI Review | Verification | `必须加载 \`sdd-review\`` | **常驻，任何项目都要补。**审查者只读，不边审边修 |
+| 人工审查后才关闭 | Verification | `人工未明确通过时不得关闭 Loop` | **常驻，任何项目都要补。**AI 准备好不等于人已经签字 |
+
 ## 2026-09-07 · 状态入口的单流写法与分流写法拆成互斥的一对
 
 此前「Loop 状态入口」和「文档规则」里各有一条**常驻**条款把根状态文件的路径写死了

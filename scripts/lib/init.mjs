@@ -6,8 +6,8 @@
  * 预览和实际不会各说各的。
  *
  * 动手的边界（和 check/guide 的只读不同，这是安装器）：
- * - 只写用户主目录下的 agent 落点（~/.claude/skills、~/.agents/skills、pi 的
- *   settings），**不碰用户的仓库**。项目级的 skill/规则落点（.cline/skills、
+ * - 只写用户主目录下的 agent 落点（~/.claude/skills、~/.agents/skills、Hermes
+ *   config.yaml、pi settings），**不碰用户的仓库**。项目级的 skill/规则落点（.cline/skills、
  *   .kilocode/rules 之类）一律不做——那是往用户的业务仓库里写东西。
  * - 只新建软链。占着位置的东西一概不动——尤其不删真实目录，那可能是用户
  *   自己写的同名 skill。冲突交给人，安装器不替人做减法。旧版留在品牌目录里的
@@ -38,12 +38,12 @@ export const cliOnPath = (env = process.env) => binOnPath("sdd-loop", env);
  * 照计划动手。只处理 ready 的项，其余原样返回。
  * 返回每一步的实际结果——报告照实说，不照计划说。
  */
-export function applyPlan(plan, { runCommand = defaultRunCommand } = {}) {
+export function applyPlan(plan, { runCommand = defaultRunCommand, now = () => new Date() } = {}) {
   const results = [];
   for (const host of plan.hosts) {
     if (!host.detected) continue;
 
-    if (host.kind === "symlink") {
+    if (host.kind === "symlink" || host.kind === "hermes") {
       for (const item of host.items) {
         if (item.state !== ITEM_READY) continue;
         try {
@@ -53,6 +53,32 @@ export function applyPlan(plan, { runCommand = defaultRunCommand } = {}) {
         } catch (err) {
           results.push({ host: host.id, name: item.name, ok: false, action: "linked", error: err.message });
         }
+      }
+      if (host.kind === "symlink") continue;
+    }
+
+    if (host.kind === "hermes") {
+      if (host.configState !== ITEM_READY) continue;
+      const stamp = now().toISOString().replace(/[:.]/g, "-");
+      let backup = null;
+      let temp = null;
+      try {
+        fs.mkdirSync(path.dirname(host.configPath), { recursive: true });
+        const originalMode = host.configExisted ? fs.statSync(host.configPath).mode & 0o777 : null;
+        if (host.configExisted) {
+          backup = `${host.configPath}.bak.${stamp}`;
+          fs.copyFileSync(host.configPath, backup, fs.constants.COPYFILE_EXCL);
+        }
+        temp = `${host.configPath}.tmp-${process.pid}-${stamp}`;
+        fs.writeFileSync(temp, host.proposedContent, { encoding: "utf8", flag: "wx" });
+        if (originalMode != null) fs.chmodSync(temp, originalMode);
+        fs.renameSync(temp, host.configPath);
+        results.push({ host: host.id, name: "config", ok: true, action: "configured", backup });
+      } catch (err) {
+        if (temp) {
+          try { fs.unlinkSync(temp); } catch { /* 临时文件可能尚未创建 */ }
+        }
+        results.push({ host: host.id, name: "config", ok: false, action: "configured", error: err.message, backup });
       }
       continue;
     }
@@ -101,6 +127,25 @@ export function renderPlan(plan, { applied = null } = {}) {
         } else {
           lines.push(`  ${MARK[item.state]} ${item.name}${item.state === ITEM_OCCUPIED ? `  ${item.detail}` : ""}`);
         }
+      }
+    } else if (host.kind === "hermes") {
+      lines.push(`${host.label}  ${host.configPath}`);
+      lines.push(`  · 共享 Skills：${host.dir}`);
+      for (const item of host.items) {
+        const done = applied?.find((r) => r.host === host.id && r.name === item.name);
+        if (done) lines.push(done.ok ? `  ✅ ${item.name}  已建软链` : `  ❌ ${item.name}  建软链失败：${done.error}`);
+        else lines.push(`  ${MARK[item.state]} ${item.name}${item.state === ITEM_OCCUPIED ? `  ${item.detail}` : ""}`);
+      }
+      const configured = applied?.find((r) => r.host === host.id && r.name === "config");
+      if (configured) {
+        lines.push(configured.ok ? "  ✅ skills.external_dirs 已登记 ~/.agents/skills" : `  ❌ config.yaml 写入失败：${configured.error}`);
+        if (configured.backup) lines.push(`  · 原配置备份：${configured.backup}`);
+      } else if (host.configState === ITEM_ALREADY) {
+        lines.push("  ✅ skills.external_dirs 已登记 ~/.agents/skills");
+      } else if (host.configState === ITEM_OCCUPIED) {
+        lines.push(`  ⚠️ config.yaml 不动：${host.configDetail}`);
+      } else {
+        lines.push("  ＋ 待登记：skills.external_dirs += ~/.agents/skills");
       }
     } else {
       lines.push(`${host.label}  ${host.settingsPath}`);
@@ -158,7 +203,7 @@ export function runInit(args, { home = process.env.HOME, packageRoot, stdout, st
     return exit(EXIT_UNUSABLE);
   }
 
-  // --claude / --agents / --pi 限定落点；都不给就是全部检测到的落点。
+  // --claude / --agents / --hermes / --pi 限定落点；都不给就是全部检测到的落点。
   const only = HOST_IDS.filter((id) => args[id]);
   const plan = planInstall({ packageRoot, home, only });
 

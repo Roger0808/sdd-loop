@@ -1,0 +1,54 @@
+---
+name: sdd-review
+description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期架构、生成 change surface，并组织独立只读 AI 代码审查与人工审查包。用户说「审查本轮实现」「/sdd review」或当前 Loop 进入 Verification 收口时使用。不负责修复审查发现，不替人工确认。
+---
+
+# SDD Review：从实现事实到人工签字
+
+## 入口门禁
+
+1. 运行 `sdd-loop check`，只处理当前流的活跃 Loop。状态不可读或声明与事实矛盾时停止。
+2. Requirements、Architecture、Specification 和 Tasks 必须已确认，Implementation 必须存在。
+3. `implementation.md` 必须记录基线分支、基线 commit、当前分支和任务范围。存量 Loop 缺少基线时向用户确认，不从 merge-base 或日期猜。
+4. 自动化测试、构建、部署和必要人工检查已运行，或者未运行项已如实记录。`skip` 不等于通过。
+
+## 固定本次审查对象
+
+生成并记录指纹：基线 commit、HEAD、`git status --short`、任务范围、已跟踪 diff 的哈希，以及纳入审查的未跟踪文件清单与内容哈希。不为了审查强制提交；审查未提交改动时，指纹必须包含它们。
+
+审查完成后再计算一次。代码、配置、迁移、测试、Loop 关键文档或 Architecture Baseline 任一变化，旧审查失效，必须重跑。
+
+## 先反向更新架构
+
+在人工审查前，实施 Agent 根据最终代码更新长期 Architecture Baseline。优先沿用已有 `docs/architecture/` 结构；没有时，单系统默认 `docs/architecture/overview.md`，分流默认 `docs/architecture/<stream>.md`。图只用 Mermaid 或 ASCII。
+
+完成后写 change surface，对下列每类给出“影响项 + 证据路径”或明确写“无”：代码与模块边界；公开接口与兼容性；配置、权限与安全；数据模型、迁移与回滚；运行时、部署与可观测性；测试与验收；Loop 文档、README 与长期架构。
+
+## 独立 AI Review
+
+优先启动一个没有实施上下文的独立 reviewer，只给它已确认文档、实施基线、当前指纹和原始 diff。reviewer 只读：可以运行不改代码的复现、测试和构建，不修复问题、不修改文档、不替用户确认。
+
+无法启动独立 reviewer 时，同一 Agent 只能在清理实施推理上下文后做一次独立审查，并在报告顶部标注“降级：非独立 reviewer”。
+
+审查要对照任务与规格，覆盖：正确性、边界/失败/权限路径、兼容性、数据与回滚、配置/部署、测试有效性、文档和 Architecture Baseline 是否与代码一致。只报告可复现、有具体文件/行号和影响的发现。
+
+## 写入 verification.md
+
+`verification.md` 保持 `draft`，并固定包含四节：
+
+1. **Automated Verification**：命令、环境、退出码、结果和未执行项。
+2. **Architecture Reconciliation & Change Surface**：更新的 Baseline 路径、反向对账结论和七类改动面。
+3. **AI Code Review**：reviewer 身份/降级、指纹、发现、残余风险和唯一结论。
+4. **Human Review Packet**：人工应重点看的 diff、架构图、验证证据、未决项，以及尚未填写的确认人/时间/版本/指纹。
+
+最终只能给出一个 AI 结论：
+
+- `READY_FOR_HUMAN_REVIEW`：没有已知阻断问题，人工可开始审查；这不等于人工通过。
+- `CHANGES_REQUIRED`：返回 Implementation，修复后从自动化验证和架构回写重新开始。
+- `NOT_REVIEWABLE_SAFELY`：基线、diff、环境或证据不足，不给通过/失败判断。
+
+实施基线缺失、审查对象无法固定或 Architecture Baseline 尚未完成反向对账时，必须给 `NOT_REVIEWABLE_SAFELY`；自动化验证失败或 reviewer 有阻断发现时，必须给 `CHANGES_REQUIRED`。两者都不得进入人工通过或关闭 Loop。
+
+## 人工门禁
+
+只有人工明确通过当前指纹对应的审查包，并在 `verification.md` 记录确认人、时间、审查版本和指纹后，才能把 verification 改为 `confirmed` 并关闭 Loop。AI 不得从“用户没有反对”、以前 Loop 的确认或 `READY_FOR_HUMAN_REVIEW` 推导人工已经通过。

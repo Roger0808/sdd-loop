@@ -23,8 +23,12 @@
     "skills": [
       "./skills/sdd-init",
       "./skills/sdd-interview",
-      "./skills/sdd-upgrade"
+      "./skills/sdd-upgrade",
+      "./skills/sdd-review"
     ]
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
   },
   "scripts": {
     "test": "node --test --test-timeout=30000 --test-force-exit"
@@ -33,5 +37,5 @@
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
   },
-  "description": "SDD Loop 的两件仪器：状态对账 + 口径字典。skill + CLI 为主体，pi 扩展可选；pi 与 Claude Code 均可用。"
+  "description": "SDD Loop 的状态对账、口径字典、仓库初始化、升级与审查 Skills。CLI 与 pi 扩展可选。"
 }

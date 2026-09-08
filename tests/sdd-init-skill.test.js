@@ -211,8 +211,10 @@ test("skill 存在且有 frontmatter（name/description 是 pi 注册的硬要�
 test("模板文件在场，且不用会被宿主自动读走的真名", () => {
   const names = fs.readdirSync(SKILL_DIR).sort();
   assert.deepEqual(names, [
+    "AGENTS.md.AUDIT.md",
     "AGENTS.md.CHANGELOG.md",
     "AGENTS.md.template",
+    "ARCHITECTURE_BASELINE.md.template",
     "CLAUDE.md.template",
     "SKILL.md",
   ]);
@@ -408,6 +410,15 @@ test("不覆盖已有文件：AGENTS.md / CLAUDE.md 已存在时是用户的东�
   const text = skill();
   assert.ok(text.includes("不要覆盖"), "「不要覆盖」丢了——初始化把用户的规则文件冲掉是不可逆损坏");
   assert.ok(text.includes("已有 AGENTS.md"), "已有 AGENTS.md 的分支没交代");
+  assert.ok(text.includes("明确采用最终 Candidate"), "没有采用决定就继续初始化，会让 status 指向尚未包含 SDD 门禁的旧 AGENTS.md");
+  assert.ok(text.includes("未采用就停止"), "用户保留当前 AGENTS.md 时应停止，不能先建 status 再留下半初始化仓库");
+});
+
+test("没有 AGENTS 直接生成最终版；已有 AGENTS 只在临时目录生成 Candidate 并等采用", () => {
+  const text = skill();
+  assert.match(text, /仓库没有 `AGENTS\.md`[\s\S]*直接生成最终 `AGENTS\.md`[\s\S]*不生成 Candidate/);
+  assert.match(text, /仓库已有 `AGENTS\.md`[\s\S]*\/tmp\/sdd-loop-agents-<repo>-<timestamp>\/[\s\S]*AGENTS\.candidate\.md/);
+  assert.ok(text.includes("明确采用最终 Candidate"));
 });
 
 test("init 只建结构不产内容：这是它与 sdd-interview 的分界", () => {

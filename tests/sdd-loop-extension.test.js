@@ -180,6 +180,27 @@ test("/sdd：引导消息交代冷启动该转去 init，不许自己开始访�
   assert.ok(sent[0].includes("/sdd init"), "没告诉模型冷启动时把用户指向 /sdd init");
 });
 
+test("/sdd upgrade 与 /sdd review 分别加载对应 skill", { skip }, async () => {
+  for (const [sub, expected, forbidden] of [
+    ["upgrade", "sdd-upgrade", "sdd-review"],
+    ["review", "sdd-review", "sdd-upgrade"],
+  ]) {
+    const { commands, sent } = await loadExtension();
+    await commands.get("sdd").handler(sub, { cwd: "/tmp", ui: { notify() {} } });
+    assert.equal(sent.length, 1);
+    assert.ok(sent[0].includes(expected), `/sdd ${sub} 没加载 ${expected}`);
+    assert.ok(!sent[0].includes(forbidden), `/sdd ${sub} 误入 ${forbidden}`);
+  }
+});
+
+test("/sdd 未知子命令只返回用法，不误入访谈", { skip }, async () => {
+  const { commands, sent } = await loadExtension();
+  await commands.get("sdd").handler("mystery", { cwd: "/tmp", ui: { notify() {} } });
+  assert.equal(sent.length, 1);
+  assert.ok(sent[0].includes("用法"));
+  assert.ok(!sent[0].includes("sdd-interview"));
+});
+
 // ---------------------------------------------------------------- 判定只有一份（源码锁）
 
 test("判定只有一份：扩展 import 判定与口径，不许自己再长一份", () => {

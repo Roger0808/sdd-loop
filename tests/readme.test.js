@@ -141,7 +141,10 @@ test("README 的宿主表 ≡ 安装计划支持的宿主——加了宿主漏�
 });
 
 test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
-  const allowed = new Set([...DEFAULT_CONVENTION.stageDocs, "status", "agents", "claude", "readme"]);
+  const allowed = new Set([
+    ...DEFAULT_CONVENTION.stageDocs,
+    "status", "agents", "claude", "readme", "overview", "stream",
+  ]);
   for (const { file, text } of READMES) {
     for (const [, name] of text.matchAll(/\b([a-z][a-z-]*)\.md\b/g)) {
       assert.ok(
@@ -194,11 +197,31 @@ test("README 承诺的本地文件都存在（安装步骤与链接不许断）"
       assert.ok(fs.existsSync(path.join(REPO_ROOT, clean)), `${file} 链接到 ${clean}，但文件不存在`);
     }
     // 安装步骤软链的每个 skill 目录必须真的在包里。
-    for (const d of ["skills/sdd-init", "skills/sdd-interview", "skills/sdd-upgrade"]) {
+    for (const d of ["skills/sdd-init", "skills/sdd-interview", "skills/sdd-upgrade", "skills/sdd-review"]) {
       assert.ok(
         text.includes(d) && fs.existsSync(path.join(REPO_ROOT, d)),
         `${file} 的安装步骤引用了 ${d}，它必须真实存在`,
       );
     }
+  }
+});
+
+test("双语 README 同步覆盖审查生命周期、Hermes 路由与 AGENTS 分类", () => {
+  const sharedClaims = [
+    "sdd-review",
+    "Worktree Ready",
+    "Architecture Baseline",
+    "Architecture Reconciliation",
+    "AI Review",
+    "Human Review",
+    "READY_FOR_HUMAN_REVIEW",
+    "--hermes",
+    "/sdd upgrade",
+    "/sdd review",
+    "KEEP_SDD_CANONICAL",
+    "NOT_TESTABLE_SAFELY",
+  ];
+  for (const claim of sharedClaims) {
+    for (const { file, text } of READMES) assert.ok(text.includes(claim), `${file} 漏了 ${claim}`);
   }
 });

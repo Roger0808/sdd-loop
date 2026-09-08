@@ -1,6 +1,6 @@
 ---
 name: sdd-init
-description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop 运行——落地 AGENTS.md（门禁规则，主力）、CLAUDE.md（转引 AGENTS.md）、docs/loops/status.md 与首个 Loop 目录。当用户说「初始化 SDD」「/sdd init」「/sdd-init」，或 sdd-loop check 报「这个仓库还没有 SDD Loop 结构」时使用。每个仓库一次，不产出任何业务内容。已经初始化过的仓库要升级条款或改形态，去 sdd-upgrade，不要重跑本 skill。
+description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop 运行——落地 AGENTS.md（门禁规则，主力）、CLAUDE.md（转引 AGENTS.md）与 docs/loops/status.md。当用户说「初始化 SDD」「/sdd init」「/sdd-init」，或 sdd-loop check 报「这个仓库还没有 SDD Loop 结构」时使用。每个仓库一次，不产出任何业务内容。已经初始化过的仓库要升级条款或改形态，去 sdd-upgrade，不要重跑本 skill。
 ---
 
 # SDD 初始化：把一个仓库变成按 SDD Loop 运行
@@ -10,7 +10,7 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 | | sdd-init（本 skill） | sdd-interview | sdd-upgrade |
 |---|---|---|---|
 | 干什么 | 建立约定：这个仓库从此按 SDD Loop 运行 | 访谈，把四份 SDD 文档问出来 | 已有约定的条款对齐与形态变更 |
-| 产出 | AGENTS.md / CLAUDE.md / status.md / Loop 目录 | 四份阶段文档的业务内容 | 改已存在的 AGENTS.md 与目录形态 |
+| 产出 | AGENTS.md / CLAUDE.md / status.md | 四份阶段文档的业务内容 | 改已存在的 AGENTS.md 与目录形态 |
 | 频率 | 每个仓库一次 | 每个产品/每轮 Loop 一次 | 模板演进或转多人时 |
 
 **一个字的业务内容都不要在这一步写。** 初始化完成后交棒给 `sdd-interview`。
@@ -72,11 +72,18 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 
 **还要问清楚：这一轮先开哪条流。**分流不等于一次建七条——见第 5 步。
 
-### 3. 落 AGENTS.md（逐字复制模板）
+### 3. 落 AGENTS.md（无旧文件直接分档，有旧文件先审计）
 
 模板：本 skill 目录下的 `AGENTS.md.template`。
+共享审计口径：本 skill 目录下的 `AGENTS.md.AUDIT.md`。只在处理 AGENTS 时读它。
 
-**逐字复制，只做四件事**：
+**仓库没有 `AGENTS.md`**：按第 1~2 步已勘察出的项目事实，对模板条款做适用性分档，直接生成最终 `AGENTS.md`。没有旧文件就没有审计对象，**不生成 Candidate**。
+
+**仓库已有 `AGENTS.md`**：不覆盖，也不直接合并。按 `AGENTS.md.AUDIT.md` 对原指令逐项分类，在 `/tmp/sdd-loop-agents-<repo>-<timestamp>/` 产出备份、`AGENTS.candidate.md` 和报告。删除、移动、合并都要用户逐项确认；在确认前仓库中的 `AGENTS.md` 一个字都不动。
+
+已有文件时，先给出唯一审计结论并等待采用决定。只有用户逐项处理高风险动作、明确采用最终 Candidate 后，才把它写为仓库 `AGENTS.md` 并继续第 4~6 步；未采用就停止，不能先建 status 或让 CLAUDE.md 指向一份尚未包含 SDD 门禁的旧文件。
+
+**新建最终文件时逐字复制，只做四件事**：
 
 1. 替换 `{{PROJECT_NAME}}` 和 `{{PROJECT_CONTEXT}}`（用第 1 步的概览，写成一小段人话，不要贴目录树）。
 2. 非迁移/重写类项目：删掉标了「源项目迁移」的行；是迁移类项目：按注释里的提示把「源项目」加回去。删完把这些引导注释一并删掉。
@@ -93,7 +100,7 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 
 模板：本 skill 目录下的 `CLAUDE.md.template`。同样逐字复制。
 
-**仓库已有 CLAUDE.md 时不要覆盖。** 在它顶部加一句指向 AGENTS.md 的转引，其余内容原样保留——那是用户自己的东西。已有 AGENTS.md 同理：不覆盖，把差异摆给用户，由用户决定合并还是保留。
+**仓库已有 CLAUDE.md 时不要覆盖。** 在它顶部加一句指向 AGENTS.md 的转引，其余内容原样保留——那是用户自己的东西。已有 AGENTS.md 的处理走第 3 步 Candidate 流程，不凭一句整体授权直接覆盖。
 
 ### 5. 落状态文件（`activeLoop: null` 起步，**不要建 Loop 目录**）
 
@@ -144,5 +151,7 @@ updatedAt: <YYYY-MM-DD>
 2. **这个仓库按什么形态初始化**（单人/多人 · 单流/分流），保留和删掉了哪几档条款。这不是记账——将来转多人或转分流时，得知道当初删过什么。
 3. AGENTS.md 里对模板做的其他改动（删了哪些迁移条款、改了哪些路径）。路径改过的话，把对应的 `--status-file` / `--archive-dir` 参数一并写出来。
 4. check 的验证结果，然后交棒：接下来用 `sdd-interview` 走访谈，产出 requirements.md。
+
+如果原本已有 `AGENTS.md`，还要报告 Candidate 临时目录、逐项待决定清单和唯一审计结论；用户未逐项确认时不得宣称 AGENTS 已采用。
 
 初始化不产出业务内容——报告里不要出现任何关于产品做什么的结论。

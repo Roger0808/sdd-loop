@@ -84,7 +84,7 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 ## 落点约定
 
-阶段文档住在 Loop 目录里（默认 `docs/loops/loop-N/`，以状态文件为准）：requirements.md / architecture.md / specification.md / tasks.md。implementation 与 verification 两站由 coding agent 按仓库的门禁规则执行，本 skill 不接管。
+阶段文档住在 Loop 目录里（默认 `docs/loops/loop-N/`，以状态文件为准）：requirements.md / architecture.md / specification.md / tasks.md。implementation 由 coding agent 执行；自动化验证之后的架构回写、AI 审查和人工审查包由 `sdd-review` 接管。
 
 **Loop 目录由第 0 站连同 requirements.md 一起建。** 初始化只留 `activeLoop: null` + `nextLoop: N`（空目录进不了 git，提前建会被 check 判成悬空指针）。第 0 站写出 requirements.md 的同时，把状态文件的 `activeLoop` 改成 `N`——目录里有了被跟踪的文件，声明才对得上事实。
 
@@ -131,9 +131,9 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 问：模块划分；核心实体与关系；业务单据；共享机制；技术决策；外部系统与集成边界。
 
-落点：**architecture.md** —— 模块边界、技术决策（每条标明：已确认约束 / 已验证事实 / 候选方案 / 待决问题）、集成边界。
+落点：**architecture.md** —— 模块边界、技术决策（每条标明：已确认约束 / 已验证事实 / 候选方案 / 待决问题）、集成边界。同时建立或审查长期 **Architecture Baseline**：先沿用项目已有 `docs/architecture/` 结构；没有时，单系统默认 `docs/architecture/overview.md`，分流默认 `docs/architecture/<stream>.md`。只有真实跨系统关系才新建总体 `overview.md`。
 
-勘察：**这一站访谈给的必须拿勘察核一遍**——源码盘点（真实模块结构和说的是否一致）、运行环境、Migration Map（旧结构 → 新结构，第一列编号）。核不上就标「待勘察」，不许编。
+勘察：**这一站访谈给的必须拿勘察核一遍**——源码盘点（真实模块结构和说的是否一致）、运行环境、Migration Map（旧结构 → 新结构，第一列编号）。核不上就标「待勘察」，不许编。写 Baseline 前读 `sdd-init` skill 目录的 `ARCHITECTURE_BASELINE.md.template` 口径；它是内容清单，**不是允许提前创建的空壳**。
 
 ### 第 3 站：场景粗流程推演
 

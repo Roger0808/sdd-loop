@@ -28,12 +28,14 @@ const HELP = `sdd-loop — SDD Loop 的两件仪器
 用法：
   sdd-loop check [--repo <dir>] [--stream <name>] [--status-file <path>] [--archive-dir <path>] [--json]
   sdd-loop guide [--type <doc.clause>] [--repo <dir>] [--docs-dir <path>] [--json]
-  sdd-loop init -g [--claude] [--agents] [--pi] [--show]
+  sdd-loop init -g [--claude] [--agents] [--hermes] [--pi] [--show]
 
-init -g：把本包装进这台机器的 agent 宿主。三个落点：
+init -g：把本包装进这台机器的 agent 宿主。四个落点：
     --claude   ~/.claude/skills/   Claude Code（它不读共享目录）
     --agents   ~/.agents/skills/   走 Agent Skills 开放标准的宿主共用这一份
                                    ${AGENTS_SERVED}
+    --hermes   登记 ~/.agents/skills/ 到 Hermes skills.external_dirs
+               默认配置 ${"${HERMES_HOME:-~/.hermes}"}/config.yaml
     --pi       pi 登记本包
   这是装**工具**，不是初始化仓库——初始化仓库是 sdd-init skill 的活。
   不带落点标志时装进所有检测到的落点；没检测到的跳过并说明。
@@ -63,7 +65,7 @@ guide：写之前给要求。「我要写这一类东西，该写哪几项」+ �
 
 // 布尔标志：不吃后面那个 token。少一个登记，`--show <子命令>` 就会把子命令
 // 当成 --show 的值吞掉，而且不报错——所以新加无值标志必须同时加进这里。
-const BOOLEAN_FLAGS = new Set(["json", "help", "global", "show", "claude", "agents", "pi"]);
+const BOOLEAN_FLAGS = new Set(["json", "help", "global", "show", "claude", "agents", "hermes", "pi"]);
 const SHORT_FLAGS = { "-h": "help", "-g": "global" };
 
 function parseArgs(argv) {

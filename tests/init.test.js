@@ -33,7 +33,7 @@ const CLI = path.join(REPO_ROOT, "scripts/sdd-loop.mjs");
  * 本包要装的 skill。**测试自己写的一份期望值**，不从 package.json 也不从被测代码读——
  * 两边各写一份，才锁得住「有人顺手把一个 skill 从 pi.skills 里删了/漏登记了」。
  */
-const SKILLS = ["sdd-init", "sdd-interview", "sdd-upgrade"];
+const SKILLS = ["sdd-init", "sdd-interview", "sdd-review", "sdd-upgrade"];
 
 /**
  * 造一个假 home。参数决定哪几个宿主「装在这台机器上」。
@@ -89,6 +89,7 @@ function pathWith(binName) {
 const claudeHost = (plan) => plan.hosts.find((h) => h.id === "claude");
 const piHost = (plan) => plan.hosts.find((h) => h.id === "pi");
 const agentsHost = (plan) => plan.hosts.find((h) => h.id === "agents");
+const hermesHost = (plan) => plan.hosts.find((h) => h.id === "hermes");
 
 // ---------------------------------------------------------------- 装得上
 
@@ -201,6 +202,38 @@ test("--show 只看不做：跑完之后主目录里一个文件都没多", () =
   assert.deepEqual(snapshot(), before, "--show 动了盘——预览就不再是预览");
 });
 
+test("Hermes 的 --show 零写入，随后 --hermes 可独立完成接入", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const root = path.join(home, ".hermes");
+  fs.mkdirSync(root);
+  const config = path.join(root, "config.yaml");
+  const original = "# existing\nmodel: x\n";
+  fs.writeFileSync(config, original);
+  const before = fs.readdirSync(home, { recursive: true }).sort();
+
+  const preview = spawnCli(["init", "-g", "--show", "--hermes"], home);
+  assert.equal(preview.status, 1, "预览发现待安装项时应返回 1");
+  assert.match(preview.stdout, /Hermes Agent/);
+  assert.deepEqual(fs.readdirSync(home, { recursive: true }).sort(), before);
+  assert.equal(fs.readFileSync(config, "utf8"), original);
+
+  const installed = spawnCli(["init", "-g", "--hermes"], home);
+  assert.equal(installed.status, 0, installed.stderr || installed.stdout);
+  assert.deepEqual(fs.readdirSync(path.join(home, ".agents", "skills")).sort(), SKILLS);
+  assert.match(fs.readFileSync(config, "utf8"), /external_dirs:[\s\S]*~\/.agents\/skills/);
+});
+
+test("默认 init -g 检测到 Hermes 时也完成共享软链和配置登记", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const root = path.join(home, ".hermes");
+  fs.mkdirSync(root);
+
+  const installed = spawnCli(["init", "-g"], home);
+  assert.equal(installed.status, 0, installed.stderr || installed.stdout);
+  assert.deepEqual(fs.readdirSync(path.join(home, ".agents", "skills")).sort(), SKILLS);
+  assert.match(fs.readFileSync(path.join(root, "config.yaml"), "utf8"), /~\/.agents\/skills/);
+});
+
 // ---------------------------------------------------------------- 判据读不出来
 
 test("pi 的 settings.json 坏了：报「不知道」，不谎报「没装」", () => {
@@ -307,6 +340,120 @@ test("检测判据一律不看 ~/.agents/ 本身——那目录谁都可能建",
     ["someone-else.md"],
     "没检测到宿主就不该往共用目录里写东西",
   );
+});
+
+// ---------------------------------------------------------------- Hermes
+
+test("Hermes 只按 PATH、专属目录或 HERMES_HOME 检测，不按共享目录误报", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  fs.mkdirSync(path.join(home, ".agents", "skills"), { recursive: true });
+  assert.equal(hermesHost(planFor(home)).detected, false, "~/.agents 不能证明 Hermes 已安装");
+
+  assert.equal(
+    hermesHost(planFor(home, ["hermes"], { PATH: pathWith("hermes") })).detected,
+    true,
+    "PATH 上有 hermes 应识别",
+  );
+
+  const configured = path.join(home, "hermes-profile");
+  assert.equal(
+    hermesHost(planFor(home, ["hermes"], { PATH: "", HERMES_HOME: configured })).root,
+    configured,
+    "HERMES_HOME 是 profile 的真相源",
+  );
+});
+
+test("--hermes 单独安装：建共享软链、登记 external_dirs，不往 ~/.hermes/skills 建同名项", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const root = path.join(home, ".hermes");
+  fs.mkdirSync(root);
+  const plan = planFor(home, ["hermes"]);
+  const host = hermesHost(plan);
+  assert.equal(host.detected, true);
+  assert.deepEqual(host.items.map((item) => item.name).sort(), SKILLS);
+
+  const results = applyPlan(plan, { now: () => new Date("2026-09-08T00:00:00Z") });
+  assert.ok(results.every((result) => result.ok));
+  assert.deepEqual(fs.readdirSync(path.join(home, ".agents", "skills")).sort(), SKILLS);
+  assert.match(fs.readFileSync(path.join(root, "config.yaml"), "utf8"), /external_dirs:[\s\S]*~\/.agents\/skills/);
+  assert.equal(fs.existsSync(path.join(root, "skills", "sdd-init")), false, "Hermes 本地 skill 落点不放本包软链");
+});
+
+test("Hermes 配置保留原键、顺序和注释，字符串 external_dirs 转列表后追加并备份", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const root = path.join(home, ".hermes");
+  fs.mkdirSync(root);
+  const config = path.join(root, "config.yaml");
+  const original = "# keep me\nmodel:\n  default: x\nskills:\n  external_dirs: /opt/team-skills # team\nagent:\n  max_turns: 42\n";
+  fs.writeFileSync(config, original);
+  fs.chmodSync(config, 0o600);
+
+  const results = applyPlan(planFor(home, ["hermes"]), { now: () => new Date("2026-09-08T01:02:03Z") });
+  const changed = fs.readFileSync(config, "utf8");
+  assert.match(changed, /# keep me/);
+  assert.match(changed, /# team/);
+  assert.ok(changed.indexOf("model:") < changed.indexOf("skills:") && changed.indexOf("skills:") < changed.indexOf("agent:"));
+  assert.match(changed, /- \/opt\/team-skills/);
+  assert.match(changed, /- ~\/.agents\/skills/);
+  const configResult = results.find((result) => result.name === "config");
+  assert.equal(fs.readFileSync(configResult.backup, "utf8"), original, "备份必须是修改前的原文");
+  assert.equal(fs.statSync(config).mode & 0o777, 0o600, "原子替换后必须保留配置权限");
+  assert.equal(fs.readdirSync(root).some((name) => name.includes(".tmp-")), false, "原子替换不得遗留临时文件");
+
+  const again = planFor(home, ["hermes"]);
+  assert.equal(hermesHost(again).configState, "already");
+  assert.equal(applyPlan(again).length, 0, "重跑不得重写配置或重复路径");
+});
+
+test("Hermes 已用 HOME 环境变量登记共享目录时不重复追加", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const root = path.join(home, ".hermes");
+  fs.mkdirSync(root);
+  const config = path.join(root, "config.yaml");
+  const original = "skills:\n  external_dirs: ${HOME}/.agents/skills\n";
+  fs.writeFileSync(config, original);
+
+  const plan = planFor(home, ["hermes"], { PATH: "", HOME: home });
+  assert.equal(hermesHost(plan).configState, "already");
+  assert.equal(applyPlan(plan).filter((result) => result.name === "config").length, 0);
+  assert.equal(fs.readFileSync(config, "utf8"), original);
+});
+
+test("Hermes 列表追加保留原有列表项注释", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const root = path.join(home, ".hermes");
+  fs.mkdirSync(root);
+  const config = path.join(root, "config.yaml");
+  fs.writeFileSync(config, "skills:\n  external_dirs:\n    - /opt/team-skills # owned by team\n");
+
+  applyPlan(planFor(home, ["hermes"]));
+  const changed = fs.readFileSync(config, "utf8");
+  assert.match(changed, /\/opt\/team-skills # owned by team/);
+  assert.match(changed, /- ~\/.agents\/skills/);
+});
+
+test("Hermes 配置损坏或 external_dirs 类型异常时不覆盖", () => {
+  for (const content of ["skills: [\n", "skills:\n  external_dirs:\n    bad: value\n"]) {
+    const home = fakeHome({ claude: false, pi: false });
+    const root = path.join(home, ".hermes");
+    fs.mkdirSync(root);
+    const config = path.join(root, "config.yaml");
+    fs.writeFileSync(config, content);
+    const plan = planFor(home, ["hermes"]);
+    assert.equal(hermesHost(plan).configState, "occupied");
+    assert.equal(hasConflict(plan), true);
+    applyPlan(plan);
+    assert.equal(fs.readFileSync(config, "utf8"), content, "不可解析的配置必须原样留下");
+  }
+});
+
+test("Hermes 与开放标准宿主同时检测到时，共享软链只计划一次", () => {
+  const home = fakeHome({ claude: false, agentsHost: "codex", pi: false });
+  fs.mkdirSync(path.join(home, ".hermes"));
+  const plan = planFor(home);
+  assert.equal(agentsHost(plan).detected, true);
+  assert.deepEqual(hermesHost(plan).items, [], "Hermes 只补配置，不重复计划同一批软链");
+  assert.equal(applyPlan(plan).filter((result) => result.action === "linked").length, SKILLS.length);
 });
 
 test("AGENTS_HOST_DIR 与代码里的宿主清单同步——加了宿主忘了加锁，上面那条就空转", () => {
@@ -483,7 +630,10 @@ test("cliOnPath：PATH 上有可执行的 sdd-loop 才算数", () => {
 // 正是非零退出码——用 execFileSync 会把「退出码对不对」变成「有没有抛」。
 function spawnCli(args, home, pathDir = "") {
   const env = { ...process.env, PATH: pathDir };
-  if (home) env.HOME = home;
+  if (home) {
+    env.HOME = home;
+    delete env.HERMES_HOME;
+  }
   // 用 process.execPath 而不是 "node"：PATH 被清空后 "node" 就找不到了。
   return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", env });
 }

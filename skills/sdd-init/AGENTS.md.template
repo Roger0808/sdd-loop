@@ -75,11 +75,15 @@
 
 ```text
 Requirements
-  -> Architecture
+  -> Architecture + Architecture Baseline
   -> Specification
   -> Tasks
+  -> Worktree Ready
   -> Implementation
-  -> Verification
+  -> Automated Verification
+  -> Architecture Reconciliation
+  -> AI Review
+  -> Human Review
   -> Loop Closed
 ```
 
@@ -101,6 +105,8 @@ Requirements
 - **不得在别人的流里改已确认文档**，也不得替别的流改状态、归档或关闭 Loop。发现别的流有矛盾，摆给用户，不要自己动手。
 - **一次改动跨多个系统时，走 `platform` 流**（或用户指定的那条跨流承载流），不要在两条流里各开一个 Loop 描述同一件事——两份需求各自 confirmed 之后，没有任何东西能发现它们矛盾。
 - **platform 流的 Loop 活跃期间，它覆盖的那几条系统流不得开新 Loop。**这条靠人守：工具不做跨流互斥的机器检查（要做就得引入「这个 Loop 锁了哪几条流」这样的声明，然后工具开始判断意图而不是事实）。
+- **每个 stream + Loop 必须使用独立 Git 分支和 worktree。**主工作区只做同步、集成和审查；`platform` 流也使用自己的 worktree，不得在两条系统流的 worktree 里分头实施。
+- 已经在主工作区开始的存量 Loop，只有在 `implementation.md` 记录一次性 worktree 豁免和原因后才能继续；豁免不得延续到下一个 Loop。
 
 ## 阶段门禁
 
@@ -116,6 +122,8 @@ Requirements
 
 - 开始设计前必须盘点真实代码、依赖、配置、数据、部署和测试。<!-- 源项目迁移：盘点对象是「源项目的真实代码……」 -->
 - 必须描述目标架构、模块边界、依赖方向和部署拓扑。<!-- 源项目迁移：加上「源架构」与「Migration Map」 -->
+- Architecture 阶段必须建立或审查长期 Architecture Baseline：优先沿用项目已有 `docs/architecture/` 结构；无旧结构时，单系统默认 `docs/architecture/overview.md`，分流默认 `docs/architecture/<stream>.md`。Loop 内 `architecture.md` 描述本轮方案，Architecture Baseline 描述系统当前总体事实，两者不得互相代替。
+- 架构图只使用可评审的 Mermaid 或 ASCII；不以 PNG/HTML 作为唯一真相源。只有存在真实跨系统关系时才新建总体 `overview.md`，不为了目录对称创建空壳。
 - 每项架构结论必须区分：已确认约束、已验证事实、候选方案、待决问题。
 - 本轮改动数据模型（新增/修改/删除表、字段、索引、约束）时，必须写：变更清单、迁移步骤、已有数据的处理方式、回滚路径与兼容窗口。**不涉及时明确写一句「本轮不涉及数据模型变更」**——留空等于没判断过，看文档的人分不出是想过了还是忘了。
 - 架构状态为 `draft` 时，只允许调研和修改文档；不得开始正式实施。
@@ -135,6 +143,7 @@ Requirements
 
 ### Implementation
 
+- 开始实施时，必须在 `implementation.md` 记录基线分支、基线 commit、当前分支和任务范围；不记录本机 worktree 绝对路径。
 - 只实施当前 Loop 已确认范围内的任务。
 - 发现新需求时先记录，不得静默扩大范围。**记进 `docs/backlog.md`**：本轮不修的缺陷、冒出来的新需求、临时绕过去的问题都写在那里，一条一行，写清是什么、在哪个文件或场景、为什么本轮不做。只说一句「先记下」而不落盘等于没记——会话一结束就没了，下一轮谁也捞不到。
 - 记进 backlog 的每条还要**写明属于哪条流**，确实跨多条流的标「跨流」；不写归属，下一轮开局按流筛的时候它会被所有人跳过。<!-- 单流：删掉这一条 -->
@@ -148,6 +157,10 @@ Requirements
 - `skip`、环境缺失或仅阅读代码不等于验证通过。
 - 本轮执行过数据迁移的，必须验证回滚路径，并在有代表性存量数据上跑过；只在空库上通过不算验证。
 - 验证结果、未完成项和差异必须写入当前 Loop 的 verification 文档。
+- 自动化验证通过不等于代码审查通过。人工审查前必须先根据最终代码反向更新 Architecture Baseline，并写出本轮 change surface：代码、配置、数据、接口、部署、测试和文档影响。
+- 必须加载 `sdd-review` 完成独立、只读的 AI Review。无法使用独立 reviewer 时，允许由同一 Agent 清理实施上下文后审查，但必须在记录中披露降级。
+- AI Review 只能给出 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED` 或 `NOT_REVIEWABLE_SAFELY`。`CHANGES_REQUIRED` 返回 Implementation；审查后代码或关键文档发生变化，旧审查立即失效。
+- `verification.md` 必须包含自动化验证、AI 代码审查、架构对账/change surface 和人工审查包。人工审查必须记录确认人、时间、审查版本和代码指纹；人工未明确通过时不得关闭 Loop。
 
 ## 事实优先级
 

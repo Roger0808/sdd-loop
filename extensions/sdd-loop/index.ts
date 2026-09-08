@@ -12,6 +12,8 @@
  * 命令：
  *   /sdd       加载 sdd-interview 访谈 skill（产**内容**：四份阶段文档）
  *   /sdd init  加载 sdd-init skill（建**约定**：AGENTS.md / CLAUDE.md / status.md，每仓一次）
+ *   /sdd upgrade 加载 sdd-upgrade skill（升级条款、分流形态或 AGENTS 审计）
+ *   /sdd review  加载 sdd-review skill（架构回写 + AI/人工审查收口）
  */
 
 import { Type } from "@earendil-works/pi-ai";
@@ -238,11 +240,27 @@ export default function (pi: ExtensionAPI) {
 		"开始之前先用 sdd_loop_check 读一下当前仓库的 Loop 状态——如果它报「还没有 SDD Loop 结构」，" +
 		"先告诉我去跑 /sdd init 建结构，不要自己开始访谈。写任何条款之前用 sdd_spec_guide 查口径与编号族。";
 
+	const UPGRADE_MESSAGE =
+		"请加载 sdd-upgrade skill，先用 sdd_loop_check 和 git status 建立干净基线，" +
+		"再让我选择条款对齐、单流转分流或 AGENTS 审计与无损精简。" +
+		"已有 AGENTS.md 的删除、移动和合并必须逐项请我确认。";
+
+	const REVIEW_MESSAGE =
+		"请加载 sdd-review skill，对当前 Loop 执行审查收口：先核对 implementation.md 的基线，" +
+		"根据最终代码反向更新 Architecture Baseline 和 change surface，再组织独立只读 AI Review，" +
+		"并把自动化验证、架构对账、AI 审查和人工审查包写入 verification.md。不要替我做人工确认。";
+
+	const SDD_USAGE = "用法：/sdd [init|upgrade|review]；不带子命令时开始访谈。";
+
 	pi.registerCommand("sdd", {
-		description: "SDD 访谈：加载 sdd-interview skill，从一句话需求到四份 SDD 文档（`/sdd init` 先初始化仓库结构）",
+		description: "SDD Loop：访谈，或用 init / upgrade / review 进入初始化、升级和审查",
 		handler: async (args: any, _ctx: any) => {
-			const sub = String(args ?? "").trim().split(/\s+/)[0];
-			pi.sendUserMessage(sub === "init" ? INIT_MESSAGE : INTERVIEW_MESSAGE);
+			const raw = String(args ?? "").trim();
+			const parts = raw ? raw.split(/\s+/) : [];
+			if (parts.length === 0) return pi.sendUserMessage(INTERVIEW_MESSAGE);
+			if (parts.length !== 1) return pi.sendUserMessage(SDD_USAGE);
+			const messages: Record<string, string> = { init: INIT_MESSAGE, upgrade: UPGRADE_MESSAGE, review: REVIEW_MESSAGE };
+			return pi.sendUserMessage(messages[parts[0]] ?? SDD_USAGE);
 		},
 	});
 }
