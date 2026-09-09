@@ -93,6 +93,8 @@ Four packaged skills: `skills/sdd-init`, `skills/sdd-interview`, `skills/sdd-upg
 
 Use `--claude`, `--agents`, `--openclaw`, `--hermes` or `--pi` to limit the target. Use `--show` for a zero-write preview. Existing files and directories are never deleted or overwritten.
 
+OpenClaw: `sdd-loop init -g --openclaw` installs to `~/.agents/skills/` with the default state, or to `$OPENCLAW_STATE_DIR/skills/` when a custom state directory is configured.
+
 Restart the host or open a new session after installation.
 
 ## Commands

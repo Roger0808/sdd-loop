@@ -93,6 +93,8 @@ sdd-loop init -g
 
 可用 `--claude`、`--agents`、`--openclaw`、`--hermes` 或 `--pi` 限定落点；`--show` 只预览、不写入。安装器不会删除或覆盖已有文件和目录。
 
+OpenClaw：执行 `sdd-loop init -g --openclaw`；默认 state 安装到 `~/.agents/skills/`，设置自定义 state 后安装到 `$OPENCLAW_STATE_DIR/skills/`。
+
 安装后重启宿主或开启新会话。
 
 ## 命令

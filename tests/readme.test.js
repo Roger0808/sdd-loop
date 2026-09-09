@@ -171,6 +171,7 @@ test("双语 README 同步覆盖核心生命周期、安装路由与 AGENTS 分�
     "/sdd review",
     "KEEP_SDD_CANONICAL",
     "NOT_TESTABLE_SAFELY",
+    "OPENCLAW_STATE_DIR",
   ];
   for (const claim of sharedClaims) {
     for (const { file, text } of READMES) assert.ok(text.includes(claim), `${file} 漏了 ${claim}`);
