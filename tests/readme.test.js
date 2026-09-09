@@ -128,6 +128,24 @@ test("README 里的 sdd-loop 命令都是真实子命令", () => {
   }
 });
 
+test("README 写清四个工作流命令及对应 Skill", () => {
+  const routes = [
+    ["/sdd init", "sdd-init"],
+    ["/sdd", "sdd-interview"],
+    ["/sdd upgrade", "sdd-upgrade"],
+    ["/sdd review", "sdd-review"],
+  ];
+  for (const { file, text } of READMES) {
+    for (const [route, skill] of routes) {
+      assert.ok(text.includes(`\`${route}\``), `${file} 漏了 ${route}`);
+      assert.ok(text.includes(`\`${skill}\``), `${file} 漏了 ${skill}`);
+    }
+    for (const doc of DEFAULT_CONVENTION.stageDocs.slice(0, 4)) {
+      assert.ok(text.includes(`\`${doc}.md\``), `${file} 没写访谈产出的 ${doc}.md`);
+    }
+  }
+});
+
 test("README 的安装步骤与 help 都指向 init -g，不再教人手工 ln -s", () => {
   for (const { file, text } of READMES) {
     assert.match(text, /sdd-loop init -g/, `${file} 的安装步骤得给出 init -g`);
@@ -136,6 +154,22 @@ test("README 的安装步骤与 help 都指向 init -g，不再教人手工 ln -
       /ln -s .*skills/,
       `${file} 还在教手工软链——安装器和手工步骤并存，用户照着手工那条走就绕过了占位检查`,
     );
+  }
+});
+
+test("README 同时提供完整安装、Skills-only 安装和对应更新方式", () => {
+  for (const { file, text } of READMES) {
+    for (const command of [
+      "npm install",
+      "npm link",
+      "sdd-loop init -g",
+      "npx skills@latest add Roger0808/sdd-loop -g",
+      "git pull --ff-only",
+      "npx skills@latest update -g",
+    ]) {
+      assert.ok(text.includes(command), `${file} 漏了 ${command}`);
+    }
+    assert.ok(text.includes("sdd-upgrade"), `${file} 没说明项目规则升级与安装包更新的区别`);
   }
 });
 

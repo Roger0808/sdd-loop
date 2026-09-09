@@ -74,30 +74,88 @@ Audit verdicts: `RECOMMEND_ADOPTION`, `NEEDS_REVISION`, `KEEP_CURRENT`, `NOT_TES
 
 ## Installation
 
-Requires Node ≥ 20:
+Requires Node ≥ 20.
+
+**Full: four Skills + `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
+npm install
 npm link
 sdd-loop init -g
 ```
 
-Four packaged skills: `skills/sdd-init`, `skills/sdd-interview`, `skills/sdd-upgrade`, `skills/sdd-review`.
+**Skills only, when the CLI is already installed**
+
+```bash
+npx skills@latest add Roger0808/sdd-loop -g
+```
 
 | Target | Installation |
 |---|---|
+| Packaged Skills | [sdd-init](skills/sdd-init), [sdd-interview](skills/sdd-interview), [sdd-upgrade](skills/sdd-upgrade), [sdd-review](skills/sdd-review) |
 | Claude Code | `~/.claude/skills/` |
 | Agent Skills hosts | `~/.agents/skills/` — Codex, Gemini CLI, GitHub Copilot, Cursor, Windsurf, OpenCode, OpenClaw, Kimi Code, Antigravity, Factory Droid, Roo Code |
 | Hermes Agent | registered through its skills configuration |
 | pi | package registration |
 
-Use `--claude`, `--agents`, `--openclaw`, `--hermes` or `--pi` to limit the target. Use `--show` for a zero-write preview. Existing files and directories are never deleted or overwritten.
+| Option | Effect |
+|---|---|
+| `--claude` / `--agents` / `--openclaw` / `--hermes` / `--pi` | Limit installation to selected targets |
+| `--show` | Preview without writing |
+| OpenClaw default state | `sdd-loop init -g --openclaw` → `~/.agents/skills/` |
+| Custom `OPENCLAW_STATE_DIR` | `sdd-loop init -g --openclaw` → `$OPENCLAW_STATE_DIR/skills/` |
+| Existing file or directory | Report conflict; never overwrite or delete |
 
-OpenClaw: `sdd-loop init -g --openclaw` installs to `~/.agents/skills/` with the default state, or to `$OPENCLAW_STATE_DIR/skills/` when a custom state directory is configured.
+### Update
+
+**Full installation**
+
+```bash
+cd <sdd-loop-dir>
+git pull --ff-only
+npm install
+npm link
+sdd-loop init -g
+```
+
+**Skills-only installation**
+
+```bash
+npx skills@latest update -g
+```
+
+| Update | Effect |
+|---|---|
+| `git pull` | Updates the CLI and symlinked Skill contents |
+| `sdd-loop init -g` | Adds newly packaged Skills or host configuration |
+| `npx skills@latest update -g` | Updates installations managed by `npx skills` |
+| `sdd-upgrade` | Updates SDD/AGENTS rules inside a project; not the installed package |
 
 Restart the host or open a new session after installation.
 
 ## Commands
+
+### Four workflow commands
+
+```mermaid
+flowchart TD
+    A{SDD Loop structure exists?}
+    A -- No --> I["/sdd init · sdd-init"]
+    A -- Yes --> B{What needs to happen?}
+    B -- Start or continue Loop documents --> N["/sdd · sdd-interview"]
+    B -- Update rules, streams or AGENTS --> U["/sdd upgrade · sdd-upgrade"]
+    B -- Close verified implementation --> R["/sdd review · sdd-review"]
+```
+
+| pi command | Skill name / slash alias | Use it when | Result |
+|---|---|---|---|
+| `/sdd init` | `sdd-init` / `/sdd-init` | A repository has no SDD Loop structure | Creates the repository rules and initial status; does not write product content |
+| `/sdd` | `sdd-interview` / `/sdd-interview` | Starting a product or a new Loop | Interviews and produces `requirements.md`, `architecture.md`, `specification.md` and `tasks.md` |
+| `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | An initialized repository needs current gates, split-stream migration or AGENTS audit | Upgrades existing SDD conventions without silently replacing project rules |
+| `/sdd review` | `sdd-review` / `/sdd-review` | Implementation and automated verification are complete | Reconciles architecture, records change surface, runs AI review and prepares human review |
+
+pi uses the first column; other hosts invoke the Skill name or slash alias.
 
 ### Status reconciliation
 
@@ -121,9 +179,7 @@ sdd-loop guide
 sdd-loop guide --type specification.entity-table
 ```
 
-It returns the required fields, existing ID families and a repository example before a clause is written.
-
-pi routes: `/sdd` for interview, `/sdd init`, `/sdd upgrade`, and `/sdd review`. Unknown subcommands return usage.
+It returns the required fields, existing ID families and a repository example before a clause is written. Unknown pi `/sdd` subcommands return usage.
 
 ## Repository layout
 

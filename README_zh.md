@@ -74,30 +74,88 @@
 
 ## 安装
 
-要求 Node ≥ 20：
+要求 Node ≥ 20。
+
+**完整安装：四个 Skill + `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
+npm install
 npm link
 sdd-loop init -g
 ```
 
-包含四个 Skill：`skills/sdd-init`、`skills/sdd-interview`、`skills/sdd-upgrade`、`skills/sdd-review`。
+**只安装 Skill：适用于已经安装 CLI 的环境**
+
+```bash
+npx skills@latest add Roger0808/sdd-loop -g
+```
 
 | 落点 | 安装方式 |
 |---|---|
+| 内置 Skill | [sdd-init](skills/sdd-init)、[sdd-interview](skills/sdd-interview)、[sdd-upgrade](skills/sdd-upgrade)、[sdd-review](skills/sdd-review) |
 | Claude Code | `~/.claude/skills/` |
 | Agent Skills 宿主 | `~/.agents/skills/` — Codex、Gemini CLI、GitHub Copilot、Cursor、Windsurf、OpenCode、OpenClaw、Kimi Code、Antigravity、Factory Droid、Roo Code |
 | Hermes Agent | 通过其 Skills 配置登记 |
 | pi | 登记本包 |
 
-可用 `--claude`、`--agents`、`--openclaw`、`--hermes` 或 `--pi` 限定落点；`--show` 只预览、不写入。安装器不会删除或覆盖已有文件和目录。
+| 选项 | 效果 |
+|---|---|
+| `--claude` / `--agents` / `--openclaw` / `--hermes` / `--pi` | 只安装到指定宿主 |
+| `--show` | 只预览，不写入 |
+| OpenClaw 默认 state | `sdd-loop init -g --openclaw` → `~/.agents/skills/` |
+| 自定义 `OPENCLAW_STATE_DIR` | `sdd-loop init -g --openclaw` → `$OPENCLAW_STATE_DIR/skills/` |
+| 已有同名文件或目录 | 报告冲突，不覆盖、不删除 |
 
-OpenClaw：执行 `sdd-loop init -g --openclaw`；默认 state 安装到 `~/.agents/skills/`，设置自定义 state 后安装到 `$OPENCLAW_STATE_DIR/skills/`。
+### 更新
+
+**完整安装**
+
+```bash
+cd <sdd-loop-dir>
+git pull --ff-only
+npm install
+npm link
+sdd-loop init -g
+```
+
+**只安装 Skill**
+
+```bash
+npx skills@latest update -g
+```
+
+| 更新动作 | 效果 |
+|---|---|
+| `git pull` | 更新 CLI 和软链指向的 Skill 内容 |
+| `sdd-loop init -g` | 补充新 Skill 或宿主配置 |
+| `npx skills@latest update -g` | 更新由 `npx skills` 管理的安装 |
+| `sdd-upgrade` | 更新项目内的 SDD/AGENTS 规则，不更新本机安装包 |
 
 安装后重启宿主或开启新会话。
 
 ## 命令
+
+### 四个工作流命令
+
+```mermaid
+flowchart TD
+    A{已有 SDD Loop 结构?}
+    A -- 否 --> I["/sdd init · sdd-init"]
+    A -- 是 --> B{当前要做什么?}
+    B -- 启动或继续 Loop 文档 --> N["/sdd · sdd-interview"]
+    B -- 更新规则、分流或 AGENTS --> U["/sdd upgrade · sdd-upgrade"]
+    B -- 已验证实现进入收口 --> R["/sdd review · sdd-review"]
+```
+
+| pi 命令 | Skill 名称 / 斜杠别名 | 什么时候用 | 产出 |
+|---|---|---|---|
+| `/sdd init` | `sdd-init` / `/sdd-init` | 仓库还没有 SDD Loop 结构 | 创建项目规则和初始状态，不写业务内容 |
+| `/sdd` | `sdd-interview` / `/sdd-interview` | 启动产品或新一轮 Loop | 访谈并产出 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md` |
+| `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | 已初始化仓库需要补新门禁、迁移分流或审计 AGENTS | 无损升级现有 SDD 约定，不静默替换项目规则 |
+| `/sdd review` | `sdd-review` / `/sdd-review` | Implementation 和自动化验证已经完成 | 架构对账、记录 change surface、AI 审查并准备人工审查包 |
+
+pi 使用第一列；其他宿主调用 Skill 名称或斜杠别名。
 
 ### 状态对账
 
@@ -121,9 +179,7 @@ sdd-loop guide
 sdd-loop guide --type specification.entity-table
 ```
 
-在写条款前返回必填项、已有编号族和仓库内参考写法。
-
-pi 路由：`/sdd` 进入访谈，另有 `/sdd init`、`/sdd upgrade`、`/sdd review`；未知子命令只返回用法。
+在写条款前返回必填项、已有编号族和仓库内参考写法。pi 的未知 `/sdd` 子命令只返回用法。
 
 ## 仓库结构
 
