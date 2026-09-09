@@ -58,7 +58,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | `node --test --test-timeout=30000 --test-force-exit tests/<file>.test.js` | 单文件。**两个 flag 都不能省**：Node 默认测试超时无限，挂起的 handler 会让 run 挂死而不是变红；`--test-force-exit` 才是真正结束 run 的那个。 |
 | `node scripts/sdd-loop.mjs check --repo <dir>` | 状态对账 CLI。 |
 | `node scripts/sdd-loop.mjs guide --type <doc.clause> [--repo <dir>]` | 口径字典 CLI。 |
-| `node scripts/sdd-loop.mjs init -g [--show]` | 把本包装进本机落点（`~/.claude/skills` / `~/.agents/skills` / Hermes `external_dirs` / pi）。**改代码后别拿真 home 试**，用 `HOME=<临时目录>` 跑；试 Hermes 同时控制 `HERMES_HOME` 与 PATH。 |
+| `node scripts/sdd-loop.mjs init -g [--show]` | 把本包装进本机落点（`~/.claude/skills` / `~/.agents/skills` / OpenClaw state skills / Hermes `external_dirs` / pi）。**改代码后别拿真 home 试**，用 `HOME=<临时目录>` 跑；profile 测试同时控制对应环境变量与 PATH。 |
 | `CODEX_HOME=<临时目录> codex debug prompt-input "hi"` | 验 Codex 到底发现了哪些 skill——渲染模型可见的 prompt，离线、不调模型、不写盘。比让模型自述可靠，也是「Codex 认软链」这条结论的来源。 |
 | `node scripts/dead-exports.mjs` | 导出级可达性扫描。判据与盲区见脚本头注；当前基线 `TOTAL: 25 DEAD: 0`。 |
 
@@ -69,7 +69,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | Loop 约定 | `src/loop/` | `front-matter.js`（严格读取器：冲突标记/重复键/未闭合一律判不可读，不返回猜出来的 meta）、`convention.js`（字段名定死、路径默认可覆盖；`conventionForStream()` 把状态文件与归档根一起下移一层）、`repo-scan.js`（只产出事实；git 不可用返回 null 不谎报 0；`discoverStreams()` **发现不配置**——根上有 `status.md` 就是单流，没有则看下一层哪些子目录里有 `status.md`） |
 | 口径 | `src/spec-guide/` | `dictionary.js`（按「文档类型 × 条款类型」组织的纯文字条目，**不携带机判结构**）、`id-scan.js`（编号族扫描：两段式/三段式/通配/区间，只扫只报）、`example.js`（参考写法选取，CLI 与扩展共享） |
 | 判定 | `src/validation/loop-check.js` | 状态对账**唯一判定源**：只返回数据，不渲染文案；判据读不出来时拒绝给任何结论。`buildLoopCheckReport()` 判一条流，`buildRepoCheckReport()` 是**聚合层，自己不判**——只发现、逐流委派、做算术（严重度取最坏：unusable > problem > ok）；打错的流名当**参数错**返回 `unknownStream`，不走下去说成冷启动 |
-| 安装计划 | `src/install/plan.js` | `init -g` 的**唯一判定源**：只算不写。要装哪些 skill 读 `package.json` 的 `pi.skills`；Hermes 计划解析 `${HERMES_HOME:-~/.hermes}/config.yaml`，只追加 `skills.external_dirs`，损坏或异常类型返回冲突，不猜。 |
+| 安装计划 | `src/install/plan.js` | `init -g` 的**唯一判定源**：只算不写。OpenClaw 默认 state 复用 `~/.agents/skills`，自定义 `OPENCLAW_STATE_DIR` 写入该 state 的 `skills/`；Hermes 解析 config 并只追加 `skills.external_dirs`。 |
 | CLI | `scripts/sdd-loop.mjs` + `scripts/lib/init.mjs` | `check` / `guide` / `init` 三个子命令；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。`init.mjs` 是唯一动手的地方——`--show` 和真跑共用同一个计划对象 |
 | pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd`、`/sdd init`、`/sdd upgrade`、`/sdd review` 四条路由；未知子命令只返回用法。 |
 | Skill · init | `skills/sdd-init/` | SKILL.md + AGENTS/CLAUDE/Baseline 模板 + `AGENTS.md.CHANGELOG.md` 与 `AGENTS.md.AUDIT.md`。模板不用会被宿主自动读走的真名。 |
@@ -88,7 +88,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 6. **git 查询不可用返回 null**（未知），不谎报 0。
 7. **宿主检测信号按宿主选，不许「统一一下」**，尤其**不许按 `~/.agents/` 判**。那是跨宿主共用目录，谁都可能建，按它判等于「有人用过任意一个宿主」就说十个全装了。判据要落在宿主自己的地盘上，还得挑没有第三方共用者的那个：Claude Code / Codex / Copilot / Cursor / Windsurf / OpenCode / Kimi / Droid / Roo 按各自的品牌目录判（目录判还能覆盖只装了桌面端/IDE 扩展、命令没进 PATH 的人）；**Gemini CLI 必须按 PATH 上有没有 `gemini` 判**——`~/.gemini/` 不是它独占的，Antigravity IDE 也写，实测一台没装 Gemini CLI 的机器上 `~/.gemini/GEMINI.md` 和 settings.json 都在，按目录判会误报；Antigravity 反过来按它自己在 `~/.gemini/` 里建的 `antigravity-ide/` 判。`AGENTS_STANDARD_HOSTS` 里每条判据都有出处注释，`tests/init.test.js` 的 `AGENTS_HOST_DIR` 是**测试自己写的**一份期望值（不从被测代码 import），两边各写一份才锁得住「判据被人偷偷改成按共用目录判」。
 8. **单流一个字都不许变**：这个包是全局安装的，已经在跑的单流仓库不该因为别人要分流而输出变样。`mode === "single"` 时 CLI 与扩展都**原路返回那份单流报告本身**（不是聚合对象）——文案、`--json` 形状、`details.report` 形状、退出码，四样都要原样。锁在 `tests/cli-check.test.js`（真起进程）与 `tests/sdd-loop-extension.test.js`；回归基线见 Testing。
-9. **`init -g` 是安装器，不是仪器**——只写用户主目录下的 agent 落点，不碰用户仓库。Hermes 只把 `~/.agents/skills` 无重复追加到它的 `skills.external_dirs`；修改已有 config 前备份并原子替换，YAML 损坏或类型异常时不覆盖，也不在 `~/.hermes/skills` 建同名软链。其他软链落点仍绝不删除或覆盖任何已存在的文件/目录。
+9. **`init -g` 是安装器，不是仪器**——只写 agent 落点，不碰用户仓库。OpenClaw 默认 state 复用共享目录，自定义 state 只写它自己的 `skills/`。Hermes 配置修改前备份并原子替换，损坏或类型异常时不覆盖。所有软链落点都绝不删除或覆盖已有文件/目录。
 
 ## Testing
 

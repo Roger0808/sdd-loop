@@ -1,10 +1,10 @@
 /**
  * README 的锁（两份：README.md 英文、README_zh.md 简体中文）。
  *
- * README 是给使用者看的唯一入口，它抄了三类会漂的数字与名字：
- * 站数、条款类型、命令名。手抄的数字漂过不止一次——首页写一个数、大纲写另一个，
- * 两边都言之凿凿。所以这里一律从真相源（SKILL.md、guide 的实际输出、CLI 的
- * 子命令表、安装计划里的宿主表）推导，不做字面比对：字面比对只能锁住
+ * README 是给使用者看的唯一入口，它会引用几类容易漂的数字与名字：
+ * 站数、命令名、安装宿主。手抄的数字漂过不止一次——首页写一个数、大纲写另一个，
+ * 两边都言之凿凿。所以这里一律从真相源（SKILL.md、CLI 的子命令表、
+ * 安装计划里的宿主表）推导，不做字面比对：字面比对只能锁住
  * 「两处一致」，锁不住「都错了」。
  *
  * 分了语言之后多一类漂：**一份改了另一份没改**。所以每条锁都对两份都跑一遍，
@@ -16,10 +16,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 
 import { DEFAULT_CONVENTION } from "../src/loop/convention.js";
-import { AGENTS_HOSTS } from "../src/install/plan.js";
+import { AGENTS_HOSTS, HOST_IDS } from "../src/install/plan.js";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf8");
@@ -69,71 +68,22 @@ test("README 声明的站数 ≡ SKILL.md 里实际的提问站数", () => {
   }
 });
 
-test("README 的站表 ≡ SKILL.md 的站（中文连标题一起锁，英文锁编号与顺序）", () => {
-  const skillTitles = [...SKILL.matchAll(/^### 第 (\d+) 站：(.+)$/gm)].map((m) => ({
-    no: m[1],
-    title: m[2].trim(),
-  }));
-
-  for (const { file, lang, text } of READMES) {
-    // README 用 `**0 · 需求起点与公司背景**` 的写法列在表格里。
-    const rows = [...text.matchAll(/\*\*(\d+) · ([^*]+)\*\*/g)].map((m) => ({
-      no: m[1],
-      title: m[2].trim(),
-    }));
-
-    if (lang === "zh") {
-      assert.deepEqual(
-        rows,
-        skillTitles,
-        `${file} 的站名与 SKILL.md 对不上——两处各说各话，用户按 README 走会找不到对应的站`,
-      );
-    } else {
-      // 译本的标题当然不同字，但站编号与顺序必须一样：少一站、串一站都是错的。
-      assert.deepEqual(
-        rows.map((r) => r.no),
-        skillTitles.map((r) => r.no),
-        `${file} 的站编号或顺序与 SKILL.md 对不上`,
-      );
-      assert.ok(
-        rows.every((r) => r.title.length > 0),
-        `${file} 有站没写标题`,
-      );
-    }
-  }
-});
-
-test("README 声明的条款类型数与清单 ≡ guide 实际支持的", () => {
-  const out = execFileSync("node", ["scripts/sdd-loop.mjs", "guide"], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-  });
-  const real = [...out.matchAll(/^ {4}([a-z]+\.[a-z-]+)/gm)].map((m) => m[1]);
-  assert.ok(real.length > 0, "guide 一个类型都没列出来，这条锁就空了");
-
-  for (const { file, lang, text } of READMES) {
-    const declared = lang === "zh" ? text.match(/全部 (\d+) 种条款类型/) : text.match(/All (\d+) clause types/);
-    assert.ok(declared, `${file} 没有声明条款类型总数`);
-    assert.equal(
-      Number(declared[1]),
-      real.length,
-      `${file} 写「${declared[1]}」，guide 实际支持 ${real.length} 种`,
+test("README 提供 guide 入口，但不复制会漂的完整条款字典", () => {
+  for (const { file, text } of READMES) {
+    assert.ok(text.includes("sdd-loop guide"), `${file} 没提供 guide 入口`);
+    assert.ok(
+      text.includes("sdd-loop guide --type specification.entity-table"),
+      `${file} 没提供按类型查询的示例`,
     );
-
-    // 短名逐个在场：README 按文档分组只写短名（`entity-table`）。
-    for (const full of real) {
-      const short = full.split(".")[1];
-      assert.ok(
-        text.includes(`\`${short}\``),
-        `${file} 的类型清单漏了 ${full}——用户查不到这一类的口径`,
-      );
-    }
   }
 });
 
 test("README 的宿主表 ≡ 安装计划支持的宿主——加了宿主漏改一份译本，用户就以为不支持", () => {
   for (const { file, text } of READMES) {
     assert.ok(text.includes("Claude Code"), `${file} 没提 Claude Code`);
+    assert.ok(text.includes("OpenClaw"), `${file} 没提 OpenClaw`);
+    assert.ok(text.includes("Hermes Agent"), `${file} 没提 Hermes Agent`);
+    assert.ok(text.includes("| pi |"), `${file} 没提 pi`);
     for (const host of AGENTS_HOSTS) {
       assert.ok(text.includes(host.label), `${file} 的宿主表漏了 ${host.label}`);
     }
@@ -143,7 +93,7 @@ test("README 的宿主表 ≡ 安装计划支持的宿主——加了宿主漏�
 test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
   const allowed = new Set([
     ...DEFAULT_CONVENTION.stageDocs,
-    "status", "agents", "claude", "readme", "overview", "stream",
+    "status", "agents", "candidate", "claude", "readme", "overview", "stream",
   ]);
   for (const { file, text } of READMES) {
     for (const [, name] of text.matchAll(/\b([a-z][a-z-]*)\.md\b/g)) {
@@ -206,7 +156,7 @@ test("README 承诺的本地文件都存在（安装步骤与链接不许断）"
   }
 });
 
-test("双语 README 同步覆盖审查生命周期、Hermes 路由与 AGENTS 分类", () => {
+test("双语 README 同步覆盖核心生命周期、安装路由与 AGENTS 分类", () => {
   const sharedClaims = [
     "sdd-review",
     "Worktree Ready",
@@ -216,6 +166,7 @@ test("双语 README 同步覆盖审查生命周期、Hermes 路由与 AGENTS 分
     "Human Review",
     "READY_FOR_HUMAN_REVIEW",
     "--hermes",
+    "--openclaw",
     "/sdd upgrade",
     "/sdd review",
     "KEEP_SDD_CANONICAL",
@@ -223,5 +174,38 @@ test("双语 README 同步覆盖审查生命周期、Hermes 路由与 AGENTS 分
   ];
   for (const claim of sharedClaims) {
     for (const { file, text } of READMES) assert.ok(text.includes(claim), `${file} 漏了 ${claim}`);
+  }
+});
+
+test("Worktree、架构对账和审查流程位于安装说明之前", () => {
+  for (const { file, lang, text } of READMES) {
+    const install = text.indexOf(lang === "zh" ? "## 安装" : "## Installation");
+    assert.ok(install > 0, `${file} 没有安装章节`);
+    for (const claim of ["Worktree Ready", "Architecture Reconciliation", "AI Review", "Human Review"]) {
+      const index = text.indexOf(claim);
+      assert.ok(index >= 0 && index < install, `${file} 的 ${claim} 没有在安装前讲清楚`);
+    }
+    for (const evidence of [
+      "stream + Loop",
+      "implementation.md",
+      "verification.md",
+      "READY_FOR_HUMAN_REVIEW",
+      "CHANGES_REQUIRED",
+      "NOT_REVIEWABLE_SAFELY",
+    ]) {
+      assert.ok(text.includes(evidence), `${file} 漏了 ${evidence}`);
+    }
+  }
+});
+
+test("README 的宿主徽章数量由安装计划推导", () => {
+  const total = AGENTS_HOSTS.length + 3; // Claude Code + Hermes Agent + pi
+  assert.match(READMES[0].text, new RegExp(`hosts-${total}(?:-|%20)`));
+  assert.match(READMES[1].text, new RegExp(`宿主-${total}%20个`));
+});
+
+test("README 的安装限定标志覆盖每个安装落点", () => {
+  for (const { file, text } of READMES) {
+    for (const id of HOST_IDS) assert.ok(text.includes(`--${id}`), `${file} 漏了 --${id}`);
   }
 });

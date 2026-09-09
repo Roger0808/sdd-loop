@@ -6,8 +6,8 @@
  * 预览和实际不会各说各的。
  *
  * 动手的边界（和 check/guide 的只读不同，这是安装器）：
- * - 只写用户主目录下的 agent 落点（~/.claude/skills、~/.agents/skills、Hermes
- *   config.yaml、pi settings），**不碰用户的仓库**。项目级的 skill/规则落点（.cline/skills、
+ * - 只写用户主目录下的 agent 落点（~/.claude/skills、~/.agents/skills、OpenClaw
+ *   state skills、Hermes config.yaml、pi settings），**不碰用户的仓库**。项目级的 skill/规则落点（.cline/skills、
  *   .kilocode/rules 之类）一律不做——那是往用户的业务仓库里写东西。
  * - 只新建软链。占着位置的东西一概不动——尤其不删真实目录，那可能是用户
  *   自己写的同名 skill。冲突交给人，安装器不替人做减法。旧版留在品牌目录里的
@@ -109,6 +109,7 @@ export function renderPlan(plan, { applied = null } = {}) {
   lines.push("");
 
   for (const host of plan.hosts) {
+    if (host.delegated) continue;
     if (!host.detected) {
       lines.push(`${host.label}  — 跳过：${host.reason}`);
       lines.push("");
@@ -203,7 +204,7 @@ export function runInit(args, { home = process.env.HOME, packageRoot, stdout, st
     return exit(EXIT_UNUSABLE);
   }
 
-  // --claude / --agents / --hermes / --pi 限定落点；都不给就是全部检测到的落点。
+  // --claude / --agents / --openclaw / --hermes / --pi 限定落点；都不给就是全部检测到的落点。
   const only = HOST_IDS.filter((id) => args[id]);
   const plan = planInstall({ packageRoot, home, only });
 

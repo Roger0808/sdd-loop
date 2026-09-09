@@ -22,11 +22,12 @@ import { parseDocument, isMap, isSeq, isScalar } from "yaml";
  * 写入目标。注意这是**落点**不是宿主列表：十几个宿主共用 `~/.agents/skills/`，
  * 一个落点服务一批。CLI 与测试都从这张表推导，不枚举 id。
  */
-export const HOST_IDS = ["claude", "agents", "hermes", "pi"];
+export const HOST_IDS = ["claude", "agents", "openclaw", "hermes", "pi"];
 
 const HOST_LABEL = {
   claude: "Claude Code",
   agents: "开放标准宿主（共享落点）",
+  openclaw: "OpenClaw",
   hermes: "Hermes Agent",
   pi: "pi",
 };
@@ -45,6 +46,7 @@ const exists = (...seg) => fs.existsSync(path.join(...seg));
  * | Cursor      | 官方文档四个落点里含 `~/.agents/skills`（软链见下面的 note）        |
  * | Windsurf    | 官方文档：`~/.codeium/windsurf/skills` + `~/.claude` + `~/.agents` |
  * | OpenCode    | 官方文档：`~/.config/opencode/skills` + `~/.claude` + `~/.agents`  |
+ * | OpenClaw    | 官方文档：默认 state 下读取个人级 `~/.agents/skills`              |
  * | Kimi Code   | 二进制里的 `USER_GENERIC_DIRS = [".agents/skills"]`                |
  * | Antigravity | 应用包里出现 `.agents/skills`（本机 Antigravity IDE.app 实查）     |
  * | Droid       | Factory 文档：`~/.agents/skills/` 下逐个 SKILL.md                  |
@@ -57,8 +59,7 @@ const exists = (...seg) => fs.existsSync(path.join(...seg));
  * Gemini CLI 按 PATH 上的命令判，Antigravity 按它自己在 `~/.gemini/` 里建的
  * `antigravity-ide/` 判。
  *
- * 没放进来的：OpenClaw、Cline、Kilo Code、Mistral Vibe。前者本机只剩配置
- * 目录、没有可执行体，验不了「它读不读共用目录」；后几个的 skill/规则落点是
+ * 没放进来的：Cline、Kilo Code、Mistral Vibe。它们的 skill/规则落点是
  * **项目级**的，往那儿写就是写进用户的仓库——`init -g` 的边界之外。宁可漏报。
  */
 const AGENTS_STANDARD_HOSTS = [
@@ -78,6 +79,12 @@ const AGENTS_STANDARD_HOSTS = [
     id: "opencode",
     label: "OpenCode",
     detect: (home) => exists(home, ".config", "opencode") || exists(home, ".opencode"),
+  },
+  {
+    id: "openclaw",
+    label: "OpenClaw",
+    detect: (home, env) =>
+      openClawUsesDefaultState(home, env) && (exists(home, ".openclaw") || binOnPath("openclaw", env)),
   },
   { id: "kimi", label: "Kimi Code", detect: (home) => exists(home, ".kimi-code") },
   { id: "antigravity", label: "Antigravity", detect: (home) => exists(home, ".gemini", "antigravity-ide") },
@@ -234,12 +241,48 @@ function planPi({ home, packageRoot }) {
   return { ...host, detected: true, installed };
 }
 
+function expandHomePath(value, home) {
+  if (value === "~") return home;
+  if (value.startsWith(`~${path.sep}`)) return path.join(home, value.slice(2));
+  return path.resolve(value);
+}
+
+function openClawStateDir(home, env) {
+  return env.OPENCLAW_STATE_DIR ? expandHomePath(env.OPENCLAW_STATE_DIR, home) : path.join(home, ".openclaw");
+}
+
+function openClawUsesDefaultState(home, env) {
+  return openClawStateDir(home, env) === path.join(home, ".openclaw");
+}
+
+function planOpenClaw({ home, env, skills, sharedAlreadyPlanned }) {
+  const stateDir = openClawStateDir(home, env);
+  const defaultState = openClawUsesDefaultState(home, env);
+  const skillsDir = defaultState ? path.join(home, ".agents", "skills") : path.join(stateDir, "skills");
+  const detected = Boolean(env.OPENCLAW_STATE_DIR) || exists(stateDir) || binOnPath("openclaw", env);
+  const host = {
+    id: "openclaw",
+    label: HOST_LABEL.openclaw,
+    kind: "symlink",
+    dir: skillsDir,
+    serves: null,
+  };
+  if (!detected) {
+    return { ...host, detected: false, reason: `PATH 上没有 openclaw，也没有 ${stateDir}——这台机器上看不到 OpenClaw`, items: [] };
+  }
+  const includeLinks = !defaultState || !sharedAlreadyPlanned;
+  return {
+    ...host,
+    detected: true,
+    items: includeLinks ? planItems(skillsDir, skills) : [],
+    delegated: !includeLinks,
+  };
+}
+
 function hermesHome(home, env) {
   const configured = env.HERMES_HOME;
   if (!configured) return path.join(home, ".hermes");
-  if (configured === "~") return home;
-  if (configured.startsWith(`~${path.sep}`)) return path.join(home, configured.slice(2));
-  return path.resolve(configured);
+  return expandHomePath(configured, home);
 }
 
 function resolveHermesExternalDir(value, home, env) {
@@ -370,7 +413,7 @@ export function findLegacyLinks({ home, skills }) {
  * @param {string} options.packageRoot 本包所在目录（软链的源、pi install 的参数）
  * @param {string} options.home        用户主目录
  * @param {string[]} [options.only]    只算这几个落点，缺省是全部
- * @param {object} [options.env]       环境变量（Gemini/Hermes 靠 PATH，Hermes 还读 HERMES_HOME）
+ * @param {object} [options.env]       环境变量（宿主 PATH，以及 OpenClaw/Hermes 的 profile 目录）
  */
 export function planInstall({ packageRoot, home, only, env = process.env }) {
   const wanted = only?.length ? HOST_IDS.filter((id) => only.includes(id)) : HOST_IDS;
@@ -394,6 +437,9 @@ export function planInstall({ packageRoot, home, only, env = process.env }) {
   const agents = wanted.includes("agents") ? planSkillsDir("agents", { home, skills, env }) : null;
   const hosts = wanted.map((id) => {
     if (id === "agents") return agents;
+    if (id === "openclaw") {
+      return planOpenClaw({ home, env, skills, sharedAlreadyPlanned: Boolean(agents?.detected) });
+    }
     if (id === "hermes") {
       // 普通开放标准宿主已计划这些软链时，Hermes 只补配置，
       // 避免一次 init 对同一目标计划两次。只点 --hermes 时则由它自己建。

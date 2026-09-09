@@ -67,6 +67,7 @@ const AGENTS_HOST_DIR = {
   cursor: [".cursor"],
   windsurf: [".codeium", "windsurf"],
   opencode: [".config", "opencode"],
+  openclaw: [".openclaw"],
   kimi: [".kimi-code"],
   antigravity: [".gemini", "antigravity-ide"],
   droid: [".factory"],
@@ -89,6 +90,7 @@ function pathWith(binName) {
 const claudeHost = (plan) => plan.hosts.find((h) => h.id === "claude");
 const piHost = (plan) => plan.hosts.find((h) => h.id === "pi");
 const agentsHost = (plan) => plan.hosts.find((h) => h.id === "agents");
+const openClawHost = (plan) => plan.hosts.find((h) => h.id === "openclaw");
 const hermesHost = (plan) => plan.hosts.find((h) => h.id === "hermes");
 
 // ---------------------------------------------------------------- 装得上
@@ -340,6 +342,49 @@ test("检测判据一律不看 ~/.agents/ 本身——那目录谁都可能建",
     ["someone-else.md"],
     "没检测到宿主就不该往共用目录里写东西",
   );
+});
+
+// ---------------------------------------------------------------- OpenClaw
+
+test("OpenClaw 默认 state 复用共享目录，PATH 或专属目录都能检测", () => {
+  const byDir = fakeHome({ claude: false, agentsHost: "openclaw", pi: false });
+  const plan = planFor(byDir);
+  assert.ok(agentsHost(plan).serves.some((host) => host.id === "openclaw"));
+  assert.equal(openClawHost(plan).dir, path.join(byDir, ".agents", "skills"));
+  assert.deepEqual(openClawHost(plan).items, [], "共享落点已经计划时不得重复计划");
+  assert.equal(openClawHost(plan).delegated, true);
+  assert.equal((renderPlan(plan).match(/OpenClaw/g) ?? []).length, 1, "共享落点只展示一次 OpenClaw");
+
+  const byPath = fakeHome({ claude: false, pi: false });
+  const pathPlan = planFor(byPath, null, { PATH: pathWith("openclaw") });
+  assert.ok(agentsHost(pathPlan).serves.some((host) => host.id === "openclaw"));
+});
+
+test("--openclaw 单独完成默认 state 安装", () => {
+  const home = fakeHome({ claude: false, agentsHost: "openclaw", pi: false });
+  const plan = planFor(home, ["openclaw"]);
+  assert.deepEqual(openClawHost(plan).items.map((item) => item.name).sort(), SKILLS);
+  assert.ok(applyPlan(plan).every((result) => result.ok));
+  assert.deepEqual(fs.readdirSync(path.join(home, ".agents", "skills")).sort(), SKILLS);
+});
+
+test("OpenClaw 自定义 state 安装到 state-owned skills，不误用个人共享目录", () => {
+  const home = fakeHome({ claude: false, pi: false });
+  const stateDir = path.join(home, "openclaw-profile");
+  const env = { PATH: "", OPENCLAW_STATE_DIR: stateDir };
+  const plan = planFor(home, ["openclaw"], env);
+  assert.equal(openClawHost(plan).dir, path.join(stateDir, "skills"));
+  assert.ok(applyPlan(plan).every((result) => result.ok));
+  assert.deepEqual(fs.readdirSync(path.join(stateDir, "skills")).sort(), SKILLS);
+  assert.equal(fs.existsSync(path.join(home, ".agents")), false);
+});
+
+test("OpenClaw 与其他开放标准宿主同时存在时，共享软链只建一次", () => {
+  const home = fakeHome({ claude: false, agentsHost: "codex", pi: false });
+  fs.mkdirSync(path.join(home, ".openclaw"));
+  const plan = planFor(home);
+  assert.deepEqual(openClawHost(plan).items, []);
+  assert.equal(applyPlan(plan).filter((result) => result.action === "linked").length, SKILLS.length);
 });
 
 // ---------------------------------------------------------------- Hermes
@@ -633,6 +678,7 @@ function spawnCli(args, home, pathDir = "") {
   if (home) {
     env.HOME = home;
     delete env.HERMES_HOME;
+    delete env.OPENCLAW_STATE_DIR;
   }
   // 用 process.execPath 而不是 "node"：PATH 被清空后 "node" 就找不到了。
   return spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", env });
