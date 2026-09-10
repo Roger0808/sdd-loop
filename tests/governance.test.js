@@ -146,17 +146,22 @@ test("审计输入脱敏、隐藏仓库绝对路径并保持哈希链", () => {
   const result = event(root, {
     type: "change_decision",
     role: "architect",
-    summary: `配置在 ${root}，另一个 worktree 在 /Users/example/code/other，password=hunter2`,
-    input: "Bearer abcdefghijklmnopqrstuvwxyz",
+    summary: `配置在 ${root}，另一个 worktree 在 /Volumes/worktrees/customer，password=hunter2`,
+    input: 'Bearer abcdefghijklmnopqrstuvwxyz，JSON 是 {"password":"JSON_SECRET"}',
+    evidence: "-----BEGIN PRIVATE KEY-----\nTOP_SECRET_KEY_MATERIAL\n-----END PRIVATE KEY-----",
     minimalCounterexample: "secret=counterexample-token",
   });
   const text = fs.readFileSync(path.join(root, result.auditFile), "utf8");
   assert.ok(!text.includes("hunter2"));
   assert.ok(!text.includes("abcdefghijklmnopqrstuvwxyz"));
-  assert.ok(!text.includes("/Users/example/code/other"));
+  assert.ok(!text.includes("JSON_SECRET"));
+  assert.ok(!text.includes("TOP_SECRET_KEY_MATERIAL"));
+  assert.ok(!text.includes("/Volumes/worktrees/customer"));
   assert.ok(!text.includes("counterexample-token"));
   assert.ok(!text.includes(root));
   assert.ok(text.includes("[REDACTED]") && text.includes("[REPO]") && text.includes("[LOCAL_PATH]"));
+  const stored = JSON.parse(text);
+  assert.equal(stored.payload.summaryRedacted, true);
   assert.deepEqual(readAuditDirectory(path.join(root, "docs/loops/loop-1")).issues, []);
 });
 
@@ -172,6 +177,17 @@ test("代码指纹只排除 Loop 审计分片，不忽略业务 audit 目录", (
   assert.notEqual(after, before);
 });
 
+test("代码指纹包含 Git 可执行位，chmod 会使旧审查失效", () => {
+  const root = repo();
+  const script = write(root, "scripts/run.sh", "#!/bin/sh\nexit 0\n");
+  fs.chmodSync(script, 0o644);
+  git(root, ["add", "scripts/run.sh"]);
+  const before = fingerprintRepo(root);
+  fs.chmodSync(script, 0o755);
+  const after = fingerprintRepo(root);
+  assert.notEqual(after, before);
+});
+
 test("审计事件被改写后 C7 报哈希失效", () => {
   const root = repo();
   const result = event(root, { type: "change_decision", role: "architect", summary: "原决定" });
@@ -180,6 +196,15 @@ test("审计事件被改写后 C7 报哈希失效", () => {
   const report = buildLoopCheckReport(root);
   assert.equal(report.ok, false);
   assert.ok(report.problems.some((problem) => problem.detail.includes("eventHash")));
+});
+
+test("合法 JSON 但不是对象的审计行由 C7 报告，不让 check 崩溃", () => {
+  const root = repo();
+  const result = event(root, { type: "change_decision", role: "architect", summary: "原决定" });
+  fs.appendFileSync(path.join(root, result.auditFile), "null\n");
+  const report = buildLoopCheckReport(root);
+  assert.equal(report.ok, false);
+  assert.ok(report.problems.some((problem) => problem.detail.includes("不是合法的审计事件对象")));
 });
 
 test("审计目录和分片拒绝软链，不能借治理写入口改仓库外文件", () => {

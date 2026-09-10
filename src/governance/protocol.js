@@ -236,17 +236,44 @@ function identity(repoRoot) {
   return { name, email };
 }
 
-const SECRET_PATTERNS = [
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/gi,
-  /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}/gi,
-  /\b(api[_-]?key|access[_-]?token|secret|password|passwd)\b(\s*[:=]\s*)[^\s,;]+/gi,
+const SECRET_REDACTIONS = [
+  {
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/gi,
+    replacement: "[REDACTED]",
+  },
+  {
+    pattern: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}/gi,
+    replacement: "$1[REDACTED]",
+  },
+  {
+    pattern: /((?:["'])?\b(?:api[_-]?key|access[_-]?token|secret|password|passwd)\b(?:["'])?\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi,
+    replacement: "$1[REDACTED]",
+  },
 ];
+
+function redactLocalPaths(value, repoRoot) {
+  const original = value;
+  let text = value;
+  const worktrees = git(repoRoot, ["worktree", "list", "--porcelain"])
+    ?.split("\n")
+    .filter((line) => line.startsWith("worktree "))
+    .map((line) => line.slice("worktree ".length).trim())
+    .filter(Boolean) ?? [];
+  const roots = [...new Set([repoRoot, ...worktrees])].sort((a, b) => b.length - a.length);
+  for (const root of roots) {
+    text = text.split(root).join(path.resolve(root) === path.resolve(repoRoot) ? "[REPO]" : "[LOCAL_PATH]");
+  }
+  text = text
+    .replace(/\/(?:Users|home|tmp|private\/tmp|var\/folders|Volumes|workspace|workspaces|opt|mnt|srv|data|usr)\/[^\s"'`,;)}\]]+/g, "[LOCAL_PATH]")
+    .replace(/\b[A-Za-z]:\\[^\s"'`,;)}\]]+/g, "[LOCAL_PATH]");
+  return { text, changed: text !== original };
+}
 
 function redactText(value) {
   const original = String(value);
   let text = original;
-  for (const pattern of SECRET_PATTERNS) {
-    text = text.replace(pattern, (_match, prefix = "", separator = "") => `${prefix || ""}${separator || ""}[REDACTED]`);
+  for (const { pattern, replacement } of SECRET_REDACTIONS) {
+    text = text.replace(pattern, replacement);
   }
   return { text, changed: text !== original, hash: sha256(original) };
 }
@@ -256,12 +283,10 @@ function sanitizePayload(payload, repoRoot) {
   for (const key of ["summary", "input", "evidence", "reason", "minimalCounterexample"]) {
     if (payload[key] === undefined) continue;
     const redacted = redactText(payload[key]);
-    kept[key] = redacted.text
-      .split(repoRoot).join("[REPO]")
-      .replace(/\/(?:Users|home|tmp|private\/tmp|var\/folders)\/[^\s"'`,;)}\]]+/g, "[LOCAL_PATH]")
-      .replace(/\b[A-Za-z]:\\[^\s"'`,;)}\]]+/g, "[LOCAL_PATH]");
+    const localPaths = redactLocalPaths(redacted.text, repoRoot);
+    kept[key] = localPaths.text;
     kept[`${key}Hash`] = redacted.hash;
-    if (redacted.changed) kept[`${key}Redacted`] = true;
+    if (redacted.changed || localPaths.changed) kept[`${key}Redacted`] = true;
   }
   for (const key of ["extension", "outcome", "caseCount", "seed"]) {
     if (payload[key] !== undefined) kept[key] = payload[key];
@@ -296,6 +321,7 @@ export function fingerprintRepo(repoRoot, { statusRel, excludePrefixes = [] } = 
     }
     if (!stat.isFile() && !stat.isSymbolicLink()) continue;
     hash.update(`${rel}\0`);
+    hash.update(stat.isSymbolicLink() ? "symlink\0" : `file:${stat.mode & 0o111 ? "executable" : "regular"}\0`);
     hash.update(stat.isSymbolicLink() ? fs.readlinkSync(abs) : fs.readFileSync(abs));
     hash.update("\0");
   }
@@ -610,6 +636,10 @@ export function readAuditDirectory(loopDir) {
         event = JSON.parse(line);
       } catch {
         issues.push({ kind: "invalid-audit-json", file, line: index + 1 });
+        continue;
+      }
+      if (!event || typeof event !== "object" || Array.isArray(event)) {
+        issues.push({ kind: "invalid-audit-event", file, line: index + 1 });
         continue;
       }
       if (event.previousEventHash !== previous) issues.push({ kind: "broken-audit-chain", file, line: index + 1 });

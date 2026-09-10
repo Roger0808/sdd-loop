@@ -142,6 +142,8 @@ export function buildGovernanceChecks(scan) {
   for (const issue of audit.issues) {
     const label = issue.kind === "invalid-audit-json"
       ? "不是合法 JSON"
+      : issue.kind === "invalid-audit-event"
+        ? "不是合法的审计事件对象"
       : issue.kind === "broken-audit-chain"
         ? "previousEventHash 断链"
         : issue.kind === "invalid-event-hash"
