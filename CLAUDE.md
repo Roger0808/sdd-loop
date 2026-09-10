@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CLI（对宿主零依赖），pi 扩展只是把它们包成工具与命令——pi 与 Claude Code 都能用。两件仪器：
+sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CLI（对宿主零依赖），pi 扩展只是把它们包成工具与命令——pi 与 Claude Code 都能用。三件仪器：
 
 1. **状态对账**：把状态文件的「声明」与文件里的「事实」摆在一起比（front-matter 可读性 / 悬空指针 / 归档完整性 / 当前门禁 / 下一步）。
 2. **口径字典**：写之前给要求（「这一类条款该写哪几项」+ 本仓现有编号族 + 参考写法）。**只在写之前给要求，不做事后判定。**
+3. **治理事件**：只在项目显式启用 `governanceVersion: 1` 后，由 Skills 通过内部 `_governance record` 追加分片审计、校验角色/指纹并推进审批门禁。它不替人做语义审批，也不自动归档。
 
 外加四份纯提示词 skill：
 
@@ -46,8 +47,8 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 - **不做事后口径判定。** 口径只在写之前给要求。
 - **不做引用图检查。** 将来若在真实项目上见到确凿的悬空引用再重开；重开时必须支持三段式编号、通配引用、区间引用——天真实现会在合格文档上造出成片假警报（实测 32 条）。
 - **不判 `docs/backlog.md`。** 它是 AGENTS.md 门禁里的约定（Implementation 把本轮不做的记进去，下一轮 Requirements 开局捞出来交用户拍板），**check 完全不看它**——它没有 front-matter、不是阶段文档，也没有「正确的样子」可判。想加判据之前先回答：它在一份合格的 backlog 上会不会误报。
-- **CLI 不接管 Implementation / Verification。** 它们仍由 coding agent 和用户 `AGENTS.md` 的门禁执行；`sdd-review` 只提供语义审查流程，不新增一个伪自动化 `sdd-loop review` CLI。
-- **不替人改状态**、不自动解冲突、不自动归档、不重命名文件。这条说的是**用户的仓库**；`init -g` 写的是宿主配置目录，两回事（见红线 9）。
+- **CLI 不做 Implementation / Verification 的语义判断。** 它们仍由 coding agent、独立 reviewer 和用户执行；治理接口只记录事件、校验机器事实和推进已授权门禁，不新增一个伪自动化 `sdd-loop review` CLI。
+- **不替人审批**、不自动解冲突、不自动归档、不重命名文件。治理接口只在明确事件输入下修改 gate 字段；`init -g` 写的是宿主配置目录，两回事（见红线 9）。
 - **不硬编码任何项目的目录约定**，不引入 HTML 注释锚点（稳定编号就是锚点）。
 
 ## Development Commands
@@ -58,9 +59,10 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | `node --test --test-timeout=30000 --test-force-exit tests/<file>.test.js` | 单文件。**两个 flag 都不能省**：Node 默认测试超时无限，挂起的 handler 会让 run 挂死而不是变红；`--test-force-exit` 才是真正结束 run 的那个。 |
 | `node scripts/sdd-loop.mjs check --repo <dir>` | 状态对账 CLI。 |
 | `node scripts/sdd-loop.mjs guide --type <doc.clause> [--repo <dir>]` | 口径字典 CLI。 |
+| `node scripts/sdd-loop.mjs _governance record --event-json <tmp> [--repo <dir>]` | Skills 内部事件入口；不作为用户工作流命令宣传。 |
 | `node scripts/sdd-loop.mjs init -g [--show]` | 把本包装进本机落点（`~/.claude/skills` / `~/.agents/skills` / OpenClaw state skills / Hermes `external_dirs` / pi）。**改代码后别拿真 home 试**，用 `HOME=<临时目录>` 跑；profile 测试同时控制对应环境变量与 PATH。 |
 | `CODEX_HOME=<临时目录> codex debug prompt-input "hi"` | 验 Codex 到底发现了哪些 skill——渲染模型可见的 prompt，离线、不调模型、不写盘。比让模型自述可靠，也是「Codex 认软链」这条结论的来源。 |
-| `node scripts/dead-exports.mjs` | 导出级可达性扫描。判据与盲区见脚本头注；当前基线 `TOTAL: 25 DEAD: 0`。 |
+| `node scripts/dead-exports.mjs` | 导出级可达性扫描。判据与盲区见脚本头注；当前基线 `TOTAL: 40 DEAD: 0`。 |
 
 ## Architecture
 
@@ -69,8 +71,9 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | Loop 约定 | `src/loop/` | `front-matter.js`（严格读取器：冲突标记/重复键/未闭合一律判不可读，不返回猜出来的 meta）、`convention.js`（字段名定死、路径默认可覆盖；`conventionForStream()` 把状态文件与归档根一起下移一层）、`repo-scan.js`（只产出事实；git 不可用返回 null 不谎报 0；`discoverStreams()` **发现不配置**——根上有 `status.md` 就是单流，没有则看下一层哪些子目录里有 `status.md`） |
 | 口径 | `src/spec-guide/` | `dictionary.js`（按「文档类型 × 条款类型」组织的纯文字条目，**不携带机判结构**）、`id-scan.js`（编号族扫描：两段式/三段式/通配/区间，只扫只报）、`example.js`（参考写法选取，CLI 与扩展共享） |
 | 判定 | `src/validation/loop-check.js` | 状态对账**唯一判定源**：只返回数据，不渲染文案；判据读不出来时拒绝给任何结论。`buildLoopCheckReport()` 判一条流，`buildRepoCheckReport()` 是**聚合层，自己不判**——只发现、逐流委派、做算术（严重度取最坏：unusable > problem > ok）；打错的流名当**参数错**返回 `unknownStream`，不走下去说成冷启动 |
+| 治理 | `src/governance/protocol.js` + `src/validation/governance-check.js` | 事件格式、身份/角色、脱敏、分片哈希链、代码/文档指纹和 C6-C10；只有状态文件显式带治理版本时启用。 |
 | 安装计划 | `src/install/plan.js` | `init -g` 的**唯一判定源**：只算不写。OpenClaw 默认 state 复用 `~/.agents/skills`，自定义 `OPENCLAW_STATE_DIR` 写入该 state 的 `skills/`；Hermes 解析 config 并只追加 `skills.external_dirs`。 |
-| CLI | `scripts/sdd-loop.mjs` + `scripts/lib/init.mjs` | `check` / `guide` / `init` 三个子命令；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。`init.mjs` 是唯一动手的地方——`--show` 和真跑共用同一个计划对象 |
+| CLI | `scripts/sdd-loop.mjs` + `scripts/lib/` | `check` / `guide` / `init` 三个用户子命令和 Skills 内部 `_governance record`；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。 |
 | pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd`、`/sdd init`、`/sdd upgrade`、`/sdd review` 四条路由；未知子命令只返回用法。 |
 | Skill · init | `skills/sdd-init/` | SKILL.md + AGENTS/CLAUDE/Baseline 模板 + `AGENTS.md.CHANGELOG.md` 与 `AGENTS.md.AUDIT.md`。模板不用会被宿主自动读走的真名。 |
 | Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编）。第 0 站**先定流、再捞 backlog**——顺序反了就筛不出该摆哪几条 |
@@ -89,6 +92,8 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 7. **宿主检测信号按宿主选，不许「统一一下」**，尤其**不许按 `~/.agents/` 判**。那是跨宿主共用目录，谁都可能建，按它判等于「有人用过任意一个宿主」就说十个全装了。判据要落在宿主自己的地盘上，还得挑没有第三方共用者的那个：Claude Code / Codex / Copilot / Cursor / Windsurf / OpenCode / Kimi / Droid / Roo 按各自的品牌目录判（目录判还能覆盖只装了桌面端/IDE 扩展、命令没进 PATH 的人）；**Gemini CLI 必须按 PATH 上有没有 `gemini` 判**——`~/.gemini/` 不是它独占的，Antigravity IDE 也写，实测一台没装 Gemini CLI 的机器上 `~/.gemini/GEMINI.md` 和 settings.json 都在，按目录判会误报；Antigravity 反过来按它自己在 `~/.gemini/` 里建的 `antigravity-ide/` 判。`AGENTS_STANDARD_HOSTS` 里每条判据都有出处注释，`tests/init.test.js` 的 `AGENTS_HOST_DIR` 是**测试自己写的**一份期望值（不从被测代码 import），两边各写一份才锁得住「判据被人偷偷改成按共用目录判」。
 8. **单流一个字都不许变**：这个包是全局安装的，已经在跑的单流仓库不该因为别人要分流而输出变样。`mode === "single"` 时 CLI 与扩展都**原路返回那份单流报告本身**（不是聚合对象）——文案、`--json` 形状、`details.report` 形状、退出码，四样都要原样。锁在 `tests/cli-check.test.js`（真起进程）与 `tests/sdd-loop-extension.test.js`；回归基线见 Testing。
 9. **`init -g` 是安装器，不是仪器**——只写 agent 落点，不碰用户仓库。OpenClaw 默认 state 复用共享目录，自定义 state 只写它自己的 `skills/`。Hermes 配置修改前备份并原子替换，损坏或类型异常时不覆盖。所有软链落点都绝不删除或覆盖已有文件/目录。
+10. **治理必须显式 opt-in。** 没有 `governanceVersion` 的仓库仍只跑 C1-C5，单流文本、JSON、details 与退出码逐字兼容；C6-C10 不能偷偷套给存量仓库。
+11. **审计只追加。** writer 按分支复用自己的随机分片；旧事件不改不删，事件内容进哈希链。敏感输入先脱敏，绝对 worktree 路径不落盘。
 
 ## Testing
 

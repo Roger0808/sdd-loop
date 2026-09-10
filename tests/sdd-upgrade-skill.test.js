@@ -50,6 +50,16 @@ test("三份 skill 的分工表在场：前提 / 核心动作 / 安全规则逐�
   );
 });
 
+test("治理升级是独立可选动作，不伪造历史，也不给当前 Loop 继承豁免", () => {
+  const text = skill();
+  assert.ok(text.includes("**治理升级**（可选）"));
+  for (const field of ["governanceVersion: 1", "gateStage", "gateState", "gateFingerprint", "enabledExtensions"]) {
+    assert.ok(text.includes(field), `治理升级缺字段 ${field}`);
+  }
+  assert.ok(text.includes("不为不存在的历史对话伪造事件"));
+  assert.ok(text.includes("豁免不得延续到下一 Loop"));
+});
+
 // 四道门禁一条都不能少，每条对应一种「改到一半没法回头」。
 // 只锁「有『动手之前』这一节」是空绿：整节留着、四条删到剩一条，锁照样绿。
 test("动手之前的四道门禁逐条在场（check 绿 / worktree 干净 / 存基准 / 没人在干活）", () => {

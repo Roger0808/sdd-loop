@@ -11,6 +11,7 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 2. Requirements、Architecture、Specification 和 Tasks 必须已确认，Implementation 必须存在。
 3. `implementation.md` 必须记录基线分支、基线 commit、当前分支和任务范围。存量 Loop 缺少基线时向用户确认，不从 merge-base 或日期猜。
 4. 自动化测试、构建、部署和必要人工检查已运行，或者未运行项已如实记录。`skip` 不等于通过。
+5. 读取 `sdd-init/references/extensions/`，逐项复核 Testing、PBT、Security、Resiliency；项目自定义扩展按 `enabledExtensions` 加载。没有 PBT 库不构成 N/A 理由。
 
 ## 固定本次审查对象
 
@@ -23,6 +24,21 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 在人工审查前，实施 Agent 根据最终代码更新长期 Architecture Baseline。优先沿用已有 `docs/architecture/` 结构；没有时，单系统默认 `docs/architecture/overview.md`，分流默认 `docs/architecture/<stream>.md`。图只用 Mermaid 或 ASCII。
 
 完成后写 change surface，对下列每类给出“影响项 + 证据路径”或明确写“无”：代码与模块边界；公开接口与兼容性；配置、权限与安全；数据模型、迁移与回滚；运行时、部署与可观测性；测试与验收；Loop 文档、README 与长期架构。
+
+完成回写后记录 `architecture_reconciled` 事件。事件由工具绑定当前代码指纹；之后任何非审计、非状态文件变化都会使它失效。
+
+## 工程扩展证据
+
+在 AI Review 前为每个启用扩展记录一次 `extension_evaluated`：
+
+| 扩展 | PASS 必须有 | N/A 边界 |
+|---|---|---|
+| Testing | 命令、环境、退出码、AC 映射和未覆盖范围 | 仅在确实没有可执行行为时使用 |
+| PBT | Property、生成域、caseCount、seed、失败反例/回归样本 | 无有价值不变量；“没有库”不算理由 |
+| Security | 信任边界、负向测试或检查证据、剩余风险 | 不涉及输入、权限、秘密、依赖或数据边界 |
+| Resiliency | 故障场景、超时/重试/幂等、回滚和观测证据 | 无运行时或外部依赖 |
+
+没有 PBT 库但存在简单不变量时，用现有测试框架加测试目录内的确定性随机生成器：固定 seed、明确样本数、输出失败输入，并把缩减后的最小反例固化为普通回归测试。复杂生成或自动 shrinking 才申请新增成熟依赖，不在项目里自造通用 PBT 框架。
 
 ## 独立 AI Review
 
@@ -49,6 +65,10 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 
 实施基线缺失、审查对象无法固定或 Architecture Baseline 尚未完成反向对账时，必须给 `NOT_REVIEWABLE_SAFELY`；自动化验证失败或 reviewer 有阻断发现时，必须给 `CHANGES_REQUIRED`。两者都不得进入人工通过或关闭 Loop。
 
+治理模式下用 `review_completed` 记录唯一结论。只有当前指纹已有 `architecture_reconciled` 且四项扩展均为 PASS 或合理 N/A 时，工具才接受 `READY_FOR_HUMAN_REVIEW`。
+
 ## 人工门禁
 
 只有人工明确通过当前指纹对应的审查包，并在 `verification.md` 记录确认人、时间、审查版本和指纹后，才能把 verification 改为 `confirmed` 并关闭 Loop。AI 不得从“用户没有反对”、以前 Loop 的确认或 `READY_FOR_HUMAN_REVIEW` 推导人工已经通过。
+
+人工明确通过后记录 `human_signed`；随后按项目规则归档六份阶段文档并更新 `activeLoop` / `lastClosedLoop`，最后记录 `loop_closed`。两者都要求 Approver 的 Git 邮箱与状态文件角色映射一致；关闭事件允许阶段文档从活跃目录迁入归档，但会拒绝签署后发生的代码、配置或长期文档变化。

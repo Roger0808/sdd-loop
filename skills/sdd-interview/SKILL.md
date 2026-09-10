@@ -7,12 +7,24 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 ## 这份 skill 是什么、不是什么
 
-**纯提示词，不是工具。** 没有状态机，没有中间文件。访谈产出直接写进 Loop 目录里的阶段文档，`status: draft` 起步，用户在对话里确认后改 `status: confirmed`——确认是人的动作，skill 不代办。
+访谈产出直接写进 Loop 目录里的阶段文档，`status: draft` 起步。确认是人的动作，skill 不代办；但治理模式下必须通过审计事件留下原始意图、答案、审批和后续 Continue，不能只留一句无法追溯的 `confirmed`。
 
 配套的两件仪器（sdd-loop 包提供，不属于本 skill）：
 
 - `sdd-loop check`：每轮开局读状态。本 skill 不管状态对账。
 - `sdd-loop guide --type <文档>.<条款>`：**写任何条款之前**先查口径和本仓现有编号族。例：`sdd-loop guide --type specification.entity-table`。
+
+## 治理模式：先记录，审批后停下
+
+状态文件含 `governanceVersion: 1` 时：
+
+1. 创建活跃 Loop 和 requirements.md 后，把用户最初的需求原文作为 `intent_captured` 事件记录；疑似凭据由工具脱敏，不要先复制进别的文件。
+2. 每轮关键回答记录 `question_answered`；只记用户答案与决策摘要，不保存完整 AI 输出。
+3. 每个阶段开始时读取 `sdd-init/references/extensions/README.md`，只加载本阶段需要的内置规则和已启用项目扩展。Requirements 只读自定义 `.opt-in.md`，答案决定是否把扩展名追加进 `enabledExtensions`。
+4. 用户确认阶段文档后，将文档标为 `confirmed`，用临时 JSON 调 `sdd-loop _governance record` 写 `stage_approved`。工具进入 `awaiting-continue` 后，**立即结束当前响应**。
+5. 只有用户后续消息明确要求继续，才写 `continue_authorized`。同一条消息里的“批准并继续”只执行批准，不能跨越停点。
+
+事件 JSON 至少含 `type`、`role`、`stage`、`summary`；原始答案放 `input`。临时文件不得提交，调用结束后删除。Git 身份缺失、角色不匹配或指纹变化时停止，不手改审计来绕过。
 
 ## 总原则：SDD 文档 = 抽取（访谈）+ 勘察（读代码/环境）+ 现场沟通
 
@@ -117,6 +129,8 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 落点：**requirements.md** —— 背景、目标（逐条编号）、非目标（本期不做，逐条编号）、成功标准（必须可测量）。
 
+工程扩展：在 Requirements 逐项判断 Testing、PBT、Security、Resiliency 的风险面；这里只决定适用性和需要追问的事实，不提前写实现方案。没有 PBT 库不等于 PBT 不适用。
+
 勘察：无。
 
 ### 第 1 站：业务上下文
@@ -132,6 +146,8 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 问：模块划分；核心实体与关系；业务单据；共享机制；技术决策；外部系统与集成边界。
 
 落点：**architecture.md** —— 模块边界、技术决策（每条标明：已确认约束 / 已验证事实 / 候选方案 / 待决问题）、集成边界。同时建立或审查长期 **Architecture Baseline**：先沿用项目已有 `docs/architecture/` 结构；没有时，单系统默认 `docs/architecture/overview.md`，分流默认 `docs/architecture/<stream>.md`。只有真实跨系统关系才新建总体 `overview.md`。
+
+工程扩展：按适用性加载 testing/security/resiliency 规则，写测试边界、信任边界、失败恢复和兼容策略；PBT 只写候选不变量和输入域，不在此阶段选库。
 
 勘察：**这一站访谈给的必须拿勘察核一遍**——源码盘点（真实模块结构和说的是否一致）、运行环境、Migration Map（旧结构 → 新结构，第一列编号）。核不上就标「待勘察」，不许编。写 Baseline 前读 `sdd-init` skill 目录的 `ARCHITECTURE_BASELINE.md.template` 口径；它是内容清单，**不是允许提前创建的空壳**。
 
@@ -157,6 +173,8 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 落点：**specification.md** —— 用例（数据 + 事件 + 预期）。
 
+工程扩展：把验收条件映射到测试类型；对 Parser、状态机、金额、权限、幂等、排序或并发规则明确 Property、生成输入域和固定示例。若没有有价值的不变量，记录 PBT N/A 的业务理由。
+
 勘察：现有数据形状——样例要长得像真的，不然推演不出真问题。
 
 ### 第 6 站：页面规格
@@ -171,6 +189,8 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 七站问完之后还有一件事，但它不靠问。落点：**tasks.md** —— 勘察代码现状后按口径拆（`sdd-loop guide --type tasks.task`）：每条任务写编号、引用的需求/架构/规格编号、完成条件、验证方法。
 
+四项工程扩展产生的测试、负向安全验证、属性生成器、回滚与观测工作必须进入具体任务；不得只在 tasks.md 末尾写一句“补测试”。新增 PBT 依赖属于依赖与供应链变化，必须在 Architecture 和 Tasks 写明并取得用户授权。
+
 不知道现状拆出来的任务是编的——勘察不到就明说拆不了，不许编。
 
 它不计入七站，是因为把它算进「访谈几站」会让人以为还有一轮提问要答，而这一步没有问题可问。**报站数时按七站报，别把它数进去。**
@@ -184,6 +204,6 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 ## 收尾
 
-1. 每份文档 `status: draft` 起步，逐份与用户对齐；用户确认才改 `status: confirmed`。
+1. 每份文档 `status: draft` 起步，逐份与用户对齐；用户确认才改 `status: confirmed`。治理模式下随后记录审批并停止，等待下一条 Continue。
 2. 明列缺口，按去向分三类：问过但用户答不上来的 / 还没问的（把问题列出来）/ 等勘察的。三类混成一句「待补充」等于没交代。
 3. 提醒跑 `sdd-loop check`：状态声明与文件事实是否一致，一跑便知。

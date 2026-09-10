@@ -70,9 +70,15 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 - 答**先单流** → 删掉标「单流：删掉」的条款。这是**多人 + 单流**，是个正常形态，不是过渡态。
 - 答**现在就分流** → 删掉标「分流：删掉」的那两条（状态文件路径的单流写法），其余全部保留，并和用户一起把流名定下来（一条流 = 一个能独立交付的子系统，流名就是目录名）。
 
-**还要问清楚：这一轮先开哪条流。**分流不等于一次建七条——见第 5 步。
+**还要问清楚：这一轮先开哪条流。**分流不等于一次建七条——见第 6 步。
 
-### 3. 落 AGENTS.md（无旧文件直接分档，有旧文件先审计）
+### 3. 确认治理角色
+
+治理事件使用 Git 身份问责。先读取 `git config user.name` 和 `git config user.email`；缺任一项时请用户配置，不替他编。再让用户把以下项目角色映射到一个或多个邮箱：Requester、Product、Architect、Implementer、Reviewer、Approver。
+
+单人项目可以六个角色都使用同一邮箱；多人项目按真实职责填写。同一人承担多个角色仍必须把审批和后续 Continue 分成两次用户动作，不能一句“批准并继续”跨过停点。
+
+### 4. 落 AGENTS.md（无旧文件直接分档，有旧文件先审计）
 
 模板：本 skill 目录下的 `AGENTS.md.template`。
 共享审计口径：本 skill 目录下的 `AGENTS.md.AUDIT.md`。只在处理 AGENTS 时读它。
@@ -81,7 +87,7 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 
 **仓库已有 `AGENTS.md`**：不覆盖，也不直接合并。按 `AGENTS.md.AUDIT.md` 对原指令逐项分类，在 `/tmp/sdd-loop-agents-<repo>-<timestamp>/` 产出备份、`AGENTS.candidate.md` 和报告。删除、移动、合并都要用户逐项确认；在确认前仓库中的 `AGENTS.md` 一个字都不动。
 
-已有文件时，先给出唯一审计结论并等待采用决定。只有用户逐项处理高风险动作、明确采用最终 Candidate 后，才把它写为仓库 `AGENTS.md` 并继续第 4~6 步；未采用就停止，不能先建 status 或让 CLAUDE.md 指向一份尚未包含 SDD 门禁的旧文件。
+已有文件时，先给出唯一审计结论并等待采用决定。只有用户逐项处理高风险动作、明确采用最终 Candidate 后，才把它写为仓库 `AGENTS.md` 并继续第 5~7 步；未采用就停止，不能先建 status 或让 CLAUDE.md 指向一份尚未包含 SDD 门禁的旧文件。
 
 **新建最终文件时逐字复制，只做四件事**：
 
@@ -96,13 +102,13 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 
 **条款本身不要改写、不要精简、不要"优化措辞"。** 改写会让仓库声明的规则和 sdd-loop 的判据对不上，检查就成了摆设——那比没有检查更坏，因为它还在绿着。
 
-### 4. 落 CLAUDE.md
+### 5. 落 CLAUDE.md
 
 模板：本 skill 目录下的 `CLAUDE.md.template`。同样逐字复制。
 
-**仓库已有 CLAUDE.md 时不要覆盖。** 在它顶部加一句指向 AGENTS.md 的转引，其余内容原样保留——那是用户自己的东西。已有 AGENTS.md 的处理走第 3 步 Candidate 流程，不凭一句整体授权直接覆盖。
+**仓库已有 CLAUDE.md 时不要覆盖。** 在它顶部加一句指向 AGENTS.md 的转引，其余内容原样保留——那是用户自己的东西。已有 AGENTS.md 的处理走第 4 步 Candidate 流程，不凭一句整体授权直接覆盖。
 
-### 5. 落状态文件（`activeLoop: null` 起步，**不要建 Loop 目录**）
+### 6. 落状态文件（`activeLoop: null` 起步，**不要建 Loop 目录**）
 
 `docs/loops/status.md`（或用户指定的路径），front-matter **至少要有 `activeLoop`**——缺了它 check 直接判读不出来：
 
@@ -115,6 +121,17 @@ lastClosedLoop: null
 nextLoop: 1
 nextPhase: requirements
 updatedAt: <YYYY-MM-DD>
+governanceVersion: 1
+gateStage: requirements
+gateState: in-progress
+gateFingerprint: null
+enabledExtensions: testing,pbt,security,resiliency
+roleRequester: <邮箱，多个用逗号分隔>
+roleProduct: <邮箱，多个用逗号分隔>
+roleArchitect: <邮箱，多个用逗号分隔>
+roleImplementer: <邮箱，多个用逗号分隔>
+roleReviewer: <邮箱，多个用逗号分隔>
+roleApprover: <邮箱，多个用逗号分隔>
 ---
 
 # Loop 状态
@@ -135,13 +152,15 @@ updatedAt: <YYYY-MM-DD>
 - **只建这一轮要开工的那条流，不要七条全建。** 同一个理由——没有 Loop 的流目录里只有一份 `activeLoop: null` 的状态文件，建了也是空转；别的流谁要开工谁建自己的（那是访谈第 0 站的活）。
 - 状态文件里可以写 `stream` 和 `owner`（谁在这条流上干活）。它们是**写给人看的认领信息**，工具不判——认领是意图不是事实。
 
-### 6. 重跑 check 验证
+四个内置工程扩展的规则在本 skill 的 `references/extensions/`。它们默认启用，但允许在 Verification 逐项写有理由的 N/A；没有 PBT 库本身不是 PBT 的 N/A 理由。
+
+### 7. 重跑 check 验证
 
 再跑一次 `sdd-loop check`。**应该是干净的（退出码 0）**，下一步显示「Loop 1 / requirements」。
 
 分流形态下不带 `--stream` 跑，它会自己发现有几条流并逐流报——这时应该只看到你刚建的那一条。
 
-不干净就说明第 5 步写错了，改完再跑——不要跳过这一步直接进访谈，也不要把红的结果当"待会儿访谈就好了"放过去。
+不干净就说明第 6 步写错了，改完再跑——不要跳过这一步直接进访谈，也不要把红的结果当"待会儿访谈就好了"放过去。
 
 ## 收尾
 

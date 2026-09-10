@@ -37,5 +37,5 @@
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
   },
-  "description": "SDD Loop 的状态对账、口径字典、仓库初始化、升级与审查 Skills。CLI 与 pi 扩展可选。"
+  "description": "SDD Loop 的状态对账、治理审计、口径字典、仓库初始化、升级与审查 Skills。CLI 与 pi 扩展可选。"
 }

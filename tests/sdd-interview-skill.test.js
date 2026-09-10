@@ -34,6 +34,7 @@ const NON_STAGE_DOC_ALLOWLIST = new Set([
   "SKILL.md",
   "README.md",
   "overview.md",
+  "opt-in.md",
 ]);
 
 /**
@@ -46,6 +47,15 @@ const BACKLOG_FILE = "docs/backlog.md";
 test("skill 存在且有 frontmatter（name/description 是 pi 注册的硬要求）", () => {
   const text = skillText();
   assert.match(text, /^---\nname: sdd-interview\ndescription: .+\n---\n/);
+});
+
+test("治理访谈记录原始意图，并把 approve 与后续 Continue 分开", () => {
+  const text = skillText();
+  for (const event of ["intent_captured", "question_answered", "stage_approved", "continue_authorized"]) {
+    assert.ok(text.includes(event), `缺治理事件 ${event}`);
+  }
+  assert.ok(text.includes("立即结束当前响应"));
+  assert.ok(text.includes("同一条消息里的“批准并继续”只执行批准"));
 });
 
 test("skill 提到的 .md 文档名：阶段文档必须在 convention.stageDocs 里，其余必须在白名单里", () => {

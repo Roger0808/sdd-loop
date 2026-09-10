@@ -75,6 +75,8 @@
 
 ```text
 Requirements
+  -> Approval (stop)
+  -> Continue (later user action)
   -> Architecture + Architecture Baseline
   -> Specification
   -> Tasks
@@ -92,6 +94,18 @@ Requirements
 只有当前 Loop 的需求、架构、规格、任务、实现和验证全部闭合后，才可以关闭它并创建新 Loop。新 Loop 必须重新确认目标和范围，不得自动继承为新的开发任务。
 
 每条流独立推进各自的 Loop：一条流开着 Loop 不阻塞别的流开自己的 Loop，各自的门禁互不代表。<!-- 单流：删掉这一段 -->
+
+## 治理、角色与审计
+
+- 状态文件包含 `governanceVersion`、`gateStage`、`gateState`、`gateFingerprint`、`enabledExtensions` 和六类 `role*` 映射。它们是机器门禁，不在其他文件复制当前值。
+- 治理事件必须读取当前仓库的 `git user.name` / `git user.email`，并匹配状态文件登记的 Requester、Product、Architect、Implementer、Reviewer 或 Approver。缺身份、角色不匹配时停止，不编造临时身份。
+- 原始需求、问题答案、阶段审批、Continue、变更理由、工程扩展结论、AI Review 和人工签署写进当前 Loop 的 `audit/*.jsonl`。分片只追加，不修改、删除、重排旧事件；不得记录本机绝对 worktree 路径。
+- 写入审计前对 Token、密码、私钥等敏感内容脱敏；保留完整输入的 SHA-256 和脱敏说明，不保存完整 AI 输出或无关命令日志。
+- 阶段文档得到明确确认后，先标 `confirmed`，再通过 `sdd-loop _governance record --event-json <临时文件>` 记录 `stage_approved`。记录后必须停止当前响应，`nextPhase` 不变。
+- 只有用户在**后续消息**明确要求继续，才能记录独立的 `continue_authorized`；工具会重新校验角色和文档指纹，再推进 `nextPhase`。即使同一人承担两个角色，也不得把“批准并继续”合成一步。
+- 审批后文档变化会使旧审批失效；AI Review 后代码、配置、测试、Loop 关键文档或 Architecture Baseline 变化会使旧审查和人工签署失效。
+- `testing,pbt,security,resiliency` 四个工程扩展默认启用。各阶段按需读取 `sdd-init` skill 的 `references/extensions/`；Verification 必须逐项写 `PASS`、`FAIL` 或有具体理由的 `N/A`，空白和“已检查”都不算证据。
+- 项目自定义扩展放在 `docs/sdd/extensions/<domain>/<name>.md`；存在同名 `.opt-in.md` 时只在 Requirements 提问决定是否启用，没有 opt-in 时始终启用。完整规则只在相关阶段加载；重名时停止，不静默覆盖。
 
 **Loop 编号是流内编号，跨流重号是正常的。**`maker/loop-1` 和 `admin-console/loop-1` 是两个不同的 Loop，裸写「Loop 1」从此有歧义——引用一律带流名，写成 `admin-console/loop-2`。这条只管 **Loop 编号**：条款编号（REQ-001、BND-002 之类）不受影响，它们永远在同一条流的文档族内部互相引用，不存在跨流引用，给每个编号都套上流名是纯噪音。<!-- 单流：删掉这一段 -->
 
@@ -161,6 +175,9 @@ Requirements
 - 必须加载 `sdd-review` 完成独立、只读的 AI Review。无法使用独立 reviewer 时，允许由同一 Agent 清理实施上下文后审查，但必须在记录中披露降级。
 - AI Review 只能给出 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED` 或 `NOT_REVIEWABLE_SAFELY`。`CHANGES_REQUIRED` 返回 Implementation；审查后代码或关键文档发生变化，旧审查立即失效。
 - `verification.md` 必须包含自动化验证、AI 代码审查、架构对账/change surface 和人工审查包。人工审查必须记录确认人、时间、审查版本和代码指纹；人工未明确通过时不得关闭 Loop。
+- Verification 还必须包含 Engineering Extensions 表，对 `testing`、`pbt`、`security`、`resiliency` 逐项记录 `PASS`、`FAIL` 或有理由的 `N/A`。PASS 必须指向证据；空白和“已检查”不算完成。
+- 没有 PBT 库时，先判断是否存在有价值的不变量；简单属性用现有测试框架加确定性 seed 生成器，复杂生成或 shrinking 才申请新增依赖。**没有 PBT 库本身不是 N/A 理由。**PBT PASS 必须记录 Property、case 数和 seed，失败反例缩减后固化为普通回归测试。
+- AI Review 前先记录当前指纹的 `architecture_reconciled` 和四项 `extension_evaluated`；结论写 `review_completed`。人工明确通过后写 `human_signed`，按项目规则归档六份阶段文档并更新状态，最后写 `loop_closed`。这些事件只留痕和校验，不替 agent 自动归档。
 
 ## 事实优先级
 

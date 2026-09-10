@@ -61,6 +61,16 @@ test("缺基线、架构未回写、测试或 AI 审查失败都不能进入人�
   assert.ok(text.includes("两者都不得进入人工通过或关闭 Loop"));
 });
 
+test("review 逐项复核四个工程扩展，并规定没有 PBT 库时的降级路径", () => {
+  const text = review();
+  for (const extension of ["Testing", "PBT", "Security", "Resiliency"]) assert.ok(text.includes(extension));
+  for (const event of ["architecture_reconciled", "extension_evaluated", "review_completed", "human_signed", "loop_closed"]) {
+    assert.ok(text.includes(event), `缺审计事件 ${event}`);
+  }
+  assert.ok(text.includes("确定性随机生成器"));
+  assert.ok(text.includes("没有 PBT 库不构成 N/A 理由"));
+});
+
 test("AGENTS 模板对单流常驻架构/审查门禁，worktree 只在分流整节", () => {
   const text = template();
   assert.ok(text.includes("必须建立或审查长期 Architecture Baseline"));

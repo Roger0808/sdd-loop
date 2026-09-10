@@ -93,7 +93,7 @@ test("README 的宿主表 ≡ 安装计划支持的宿主——加了宿主漏�
 test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
   const allowed = new Set([
     ...DEFAULT_CONVENTION.stageDocs,
-    "status", "agents", "candidate", "claude", "readme", "overview", "stream",
+    "status", "agents", "candidate", "claude", "readme", "overview", "stream", "opt-in",
   ]);
   for (const { file, text } of READMES) {
     for (const [, name] of text.matchAll(/\b([a-z][a-z-]*)\.md\b/g)) {
@@ -102,6 +102,17 @@ test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
         `${file} 提到 ${name}.md，它既不是阶段文档（${DEFAULT_CONVENTION.stageDocs.join("/")}）也不在白名单里`,
       );
     }
+  }
+});
+
+test("双语 README 用图表说明治理停点和四项工程扩展", () => {
+  for (const { file, text } of READMES) {
+    assert.ok(text.includes("awaiting_continue"), `${file} 没画出审批后的停止状态`);
+    assert.ok(text.includes("audit/*.jsonl"), `${file} 没说明分片审计落点`);
+    for (const extension of ["Testing", "PBT", "Security", "Resiliency"]) {
+      assert.ok(text.includes(extension), `${file} 漏了 ${extension}`);
+    }
+    assert.ok(text.includes("seed"), `${file} 没说明无 PBT 库时的确定性证据`);
   }
 });
 

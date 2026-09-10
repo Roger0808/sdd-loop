@@ -1,5 +1,5 @@
 /**
- * sdd-loop pi 扩展：SDD Loop 的两件仪器接进 pi——状态对账 + 口径字典。
+ * sdd-loop pi 扩展：把两件只读用户仪器接进 pi——状态对账 + 口径字典。
  *
  * 分工（与 CLI 表面 scripts/sdd-loop.mjs 同一套约束）：
  * - 判定只有一份：sdd_loop_check 的结论全部来自 src/validation/loop-check.js，
@@ -80,6 +80,7 @@ function renderCheckBody(report: any): string {
 	} else if (next?.kind === "continue") {
 		lines.push("", `下一步：继续 Loop ${next.loop}（${next.dir}）`);
 		if (next.blockedAt) lines.push(`当前门禁：${next.blockedAt}`);
+		if (next.gateState) lines.push(`治理状态：${next.gateState}`);
 	}
 
 	if (report.advisories.length) {
@@ -163,7 +164,7 @@ export default function (pi: ExtensionAPI) {
 		name: "sdd_loop_check",
 		label: "SDD Loop 状态对账",
 		description:
-			"把状态文件的「声明」和文件里的「事实」摆在一起比：状态文件读不读得出来（front-matter 冲突/重复键/未闭合）、activeLoop 是否悬空指针、已关闭 Loop 的阶段文档是否全部 archived、当前卡在哪道门禁、下一步该做什么。仓库是单流还是分流（多个系统各推各的 Loop）由它自己发现，分流时逐流报结论。每轮 Loop 开局跑一次。只读，不改任何文件；发现矛盾时停下来请人确认，不替人改状态。",
+			"把状态文件的「声明」和文件里的「事实」摆在一起比：front-matter、activeLoop、归档、当前门禁与下一步。显式启用 governanceVersion 的项目还检查审批/Continue、角色身份、审计哈希链、指纹、工程扩展和人工关闭门禁。仓库单流或分流由它自己发现。每轮开局跑一次；只读，不改文件。",
 		promptSnippet: "SDD Loop 开局读状态：声明与事实是否一致",
 		promptGuidelines: [
 			"每轮 Loop 开始时先跑 sdd_loop_check 再动手。",

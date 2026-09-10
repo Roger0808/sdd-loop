@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * sdd-loop — SDD Loop 的两件仪器的 CLI 表面：状态对账（check）+ 口径字典（guide）。
+ * sdd-loop — 两件用户仪器（check / guide）和 Skills 内部治理事件入口的 CLI 表面。
  *
  * 判定不在这里：check 的结论一律来自 src/validation/loop-check.js，
  * guide 的口径一律来自 src/spec-guide/dictionary.js、编号族一律来自
@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRepoCheckReport } from "../src/validation/loop-check.js";
 import { runInit } from "./lib/init.mjs";
+import { runGovernance } from "./lib/governance.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
 import { pickExample } from "../src/spec-guide/example.js";
@@ -23,7 +24,7 @@ import { EXIT_OK, EXIT_CONTENT, EXIT_UNUSABLE } from "./lib/exit-codes.mjs";
 // 共享落点服务谁，从判定源里生成——手抄一份就等着「加了宿主帮助里没有」。
 const AGENTS_SERVED = AGENTS_HOSTS.map((h) => h.label).join(" / ");
 
-const HELP = `sdd-loop — SDD Loop 的两件仪器
+const HELP = `sdd-loop — SDD Loop 仪器
 
 用法：
   sdd-loop check [--repo <dir>] [--stream <name>] [--status-file <path>] [--archive-dir <path>] [--json]
@@ -132,6 +133,7 @@ function renderReportBody(report) {
     lines.push(`下一步：继续 Loop ${next.loop}（${next.dir}）`);
     if (stages) lines.push(`        阶段状态：${stages}`);
     if (next.blockedAt) lines.push(`        当前门禁：${next.blockedAt}`);
+    if (next.gateState) lines.push(`        治理状态：${next.gateState}`);
   }
 
   if (report.advisories.length) {
@@ -306,6 +308,13 @@ function main() {
   if (command === "init") {
     return runInit(args, {
       packageRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+      stdout: (s) => process.stdout.write(s),
+      stderr: (s) => process.stderr.write(s),
+      exit: (code) => process.exit(code),
+    });
+  }
+  if (command === "_governance") {
+    return runGovernance(args, {
       stdout: (s) => process.stdout.write(s),
       stderr: (s) => process.stderr.write(s),
       exit: (code) => process.exit(code),

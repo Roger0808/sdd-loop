@@ -217,6 +217,7 @@ test("模板文件在场，且不用会被宿主自动读走的真名", () => {
     "ARCHITECTURE_BASELINE.md.template",
     "CLAUDE.md.template",
     "SKILL.md",
+    "references",
   ]);
   // 上面那条清单锁的是「加文件要是有意的」；这一条锁的才是它的**用意**：
   // skill 目录会被软链进 ~/.claude/skills/ 等落点，叫真名的文件会被宿主当成
@@ -224,6 +225,15 @@ test("模板文件在场，且不用会被宿主自动读走的真名", () => {
   for (const real of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md.template"]) {
     assert.ok(!names.includes(real), `${real} 是宿主会自动读走的真名，不能出现在 skill 目录里`);
   }
+});
+
+test("四项工程扩展有独立规则，PBT 写清无库降级而不是直接 N/A", () => {
+  const dir = path.join(SKILL_DIR, "references/extensions");
+  assert.deepEqual(fs.readdirSync(dir).sort(), ["README.md", "pbt.md", "resiliency.md", "security.md", "testing.md"]);
+  const pbt = fs.readFileSync(path.join(dir, "pbt.md"), "utf8");
+  assert.ok(pbt.includes("确定性随机生成器"));
+  assert.ok(pbt.includes("没有 PBT 库") && pbt.includes("不是 N/A 理由"));
+  assert.ok(pbt.includes("caseCount") && pbt.includes("seed"));
 });
 
 test("模板留了占位符，落地时必须替换（写死项目名等于把上一个项目的上下文发给所有人）", () => {

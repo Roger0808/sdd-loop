@@ -63,6 +63,17 @@ export const DEFAULT_CONVENTION = Object.freeze({
     "document",
     "stream",
     "owner",
+    "governanceVersion",
+    "gateStage",
+    "gateState",
+    "gateFingerprint",
+    "enabledExtensions",
+    "roleRequester",
+    "roleProduct",
+    "roleArchitect",
+    "roleImplementer",
+    "roleReviewer",
+    "roleApprover",
   ]),
 });
 
@@ -86,9 +97,8 @@ export function resolveConvention(overrides = {}) {
  */
 export function conventionForStream(streamName, overrides = {}) {
   const base = resolveConvention(overrides);
-  const source = overrides && typeof overrides === "object" ? overrides : {};
   return {
-    ...source,
+    ...base,
     statusFile: path.join(path.dirname(base.statusFile), streamName, path.basename(base.statusFile)),
     archiveDir: path.join(base.archiveDir, streamName),
   };

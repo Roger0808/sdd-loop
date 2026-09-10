@@ -24,11 +24,28 @@
 
 ---
 
-One request → 7-station interview → isolated implementation → verification → architecture reconciliation → AI review → human approval. One complete pass is a **Loop**.
+One request → 7-station interview → staged approval → isolated implementation → engineering verification → architecture reconciliation → AI review → human approval. One complete pass is a **Loop**.
 
 ## Workflow
 
-`Requirements → Architecture/Baseline → Specification → Tasks → Worktree Ready → Implementation → Automated Verification → Architecture Reconciliation → AI Review → Human Review → Closed`
+```mermaid
+flowchart LR
+    R[Requirements] --> G1[Approve → STOP → later Continue]
+    G1 --> A[Architecture]
+    A --> G2[Approve → STOP → later Continue]
+    G2 --> S[Specification]
+    S --> G3[Approve → STOP → later Continue]
+    G3 --> T[Tasks]
+    T --> G4[Approve → STOP → later Continue]
+    G4 --> W[Worktree Ready]
+    W --> I[Implementation]
+    I --> G5[Approve → STOP → later Continue]
+    G5 --> E[Automated Verification + Engineering Extensions]
+    E --> B[Architecture Reconciliation]
+    B --> AI[AI Review]
+    AI --> H[Human Review]
+    H --> X[Closed]
+```
 
 The six stage documents and existing `nextPhase` values remain unchanged. The additional nodes are gates:
 
@@ -45,6 +62,40 @@ The six stage documents and existing `nextPhase` values remain unchanged. The ad
 | AI Review | A read-only reviewer returns one fixed verdict |
 | Human Review | A person explicitly approves the reviewed fingerprint |
 | Closed | Stage documents are archived and the status file is updated in the same change |
+
+### Approval, roles and audit
+
+```mermaid
+stateDiagram-v2
+    [*] --> in_progress
+    in_progress --> awaiting_continue: approve
+    awaiting_continue --> in_progress: explicit later continue
+    in_progress --> ready_for_human_review: extensions + reconciliation + AI review
+    ready_for_human_review --> human_approved: sign reviewed fingerprint
+    human_approved --> closed: archive, then record close
+```
+
+| Mechanism | Rule |
+|---|---|
+| Roles | Requester, Product, Architect, Implementer, Reviewer and Approver map to Git emails |
+| Approve | Confirms the current stage and enters `awaiting-continue`; it does not advance `nextPhase` |
+| Continue | Must come from a later user message and revalidates role and document fingerprint |
+| Audit | Each worktree appends to its own `audit/*.jsonl` shard; a hash chain detects rewriting |
+| Privacy | Tokens, passwords and private keys are redacted; local worktree paths and full AI output are not stored |
+| Invalidation | Document changes invalidate approval; code or critical-document changes invalidate review and signing |
+
+### Engineering quality extensions
+
+All four are enabled by default. Every Loop records `PASS`, `FAIL` or a reasoned `N/A`:
+
+| Extension | Use it for | PASS evidence |
+|---|---|---|
+| Testing | Every change with executable behavior | Acceptance mapping, commands, exit codes, results and uncovered areas |
+| PBT | Parsers, business rules, state machines, authorization, idempotency, ordering, pagination and concurrency | Property, input domain, case count, seed and regression counterexamples |
+| Security | Changes to input, identity, authorization, tenancy, secrets, dependencies or network boundaries | Trust boundaries, negative tests, checks and residual risk |
+| Resiliency | External dependencies, retry, transactions, deployment or runtime behavior | Failure scenarios, timeout/retry/idempotency, rollback and observability evidence |
+
+Without a PBT library use: `existing library → existing test framework + deterministic seeded generator → approved new dependency`. A missing library is not an `N/A` reason; `N/A` is valid only when no valuable invariant exists.
 
 ### Worktree isolation
 
@@ -152,7 +203,7 @@ flowchart TD
 |---|---|---|---|
 | `/sdd init` | `sdd-init` / `/sdd-init` | A repository has no SDD Loop structure | Creates the repository rules and initial status; does not write product content |
 | `/sdd` | `sdd-interview` / `/sdd-interview` | Starting a product or a new Loop | Interviews and produces `requirements.md`, `architecture.md`, `specification.md` and `tasks.md` |
-| `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | An initialized repository needs current gates, split-stream migration or AGENTS audit | Upgrades existing SDD conventions without silently replacing project rules |
+| `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | An initialized repository needs current gates, governance roles, split-stream migration or AGENTS audit | Upgrades existing SDD conventions without inventing history or silently replacing project rules |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation and automated verification are complete | Reconciles architecture, records change surface, runs AI review and prepares human review |
 
 pi uses the first column; other hosts invoke the Skill name or slash alias.
@@ -171,6 +222,8 @@ sdd-loop check --json
 | `0` | clean |
 | `1` | declarations contradict repository facts |
 | `2` | evidence is unreadable; no verdict |
+
+Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. Legacy repositories retain their existing results and exit codes.
 
 ### Clause guide
 
@@ -194,12 +247,15 @@ your-project/
     │   └── [<stream>/]
     │       ├── status.md
     │       └── loop-N/
+    │           ├── audit/
+    │           │   └── <writer-id>.jsonl
     │           ├── requirements.md
     │           ├── architecture.md
     │           ├── specification.md
     │           ├── tasks.md
     │           ├── implementation.md
     │           └── verification.md
+    ├── sdd/extensions/        # optional project extensions; *.opt-in.md controls enablement
     └── archive/
 ```
 

@@ -19,6 +19,7 @@ import path from "node:path";
 import { scanLoopRepo, discoverStreams } from "../loop/repo-scan.js";
 import { isBlank } from "../loop/front-matter.js";
 import { conventionForStream } from "../loop/convention.js";
+import { buildGovernanceChecks } from "./governance-check.js";
 
 const SEVERITY = Object.freeze({ unusable: "unusable", problem: "problem", advisory: "advisory" });
 
@@ -144,6 +145,11 @@ export function buildLoopCheckReport(repoRoot, overrides = {}) {
       stages: active.stageDocs.map((d) => ({ name: d.name, status: d.status })),
       blockedAt: pending.length ? pending[0].name : null,
     };
+    if (!isBlank(status.meta.governanceVersion)) {
+      nextStep.gateStage = status.meta.gateStage || null;
+      nextStep.gateState = status.meta.gateState || null;
+      nextStep.blockedAt = status.meta.gateStage || nextStep.blockedAt;
+    }
   } else {
     const nextLoop = status.meta.nextLoop;
     const nextPhase = status.meta.nextPhase;
@@ -168,8 +174,9 @@ export function buildLoopCheckReport(repoRoot, overrides = {}) {
     }
   }
 
-  const checks = [c1, c2, c3, c4, c5];
-  const problems = [...c2.findings, ...c3.findings];
+  const governanceChecks = buildGovernanceChecks(scan);
+  const checks = [c1, c2, c3, c4, c5, ...governanceChecks];
+  const problems = [...c2.findings, ...c3.findings, ...governanceChecks.flatMap((entry) => entry.findings)];
   const advisories = [...c5.findings];
 
   return {

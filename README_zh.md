@@ -24,11 +24,28 @@
 
 ---
 
-一句话需求 → 七站访谈 → 隔离实施 → 验证 → 架构对账 → AI 审查 → 人工确认。完整走一遍就是一个 **Loop**。
+一句话需求 → 七站访谈 → 分阶段审批 → 隔离实施 → 工程验证 → 架构对账 → AI 审查 → 人工确认。完整走一遍就是一个 **Loop**。
 
 ## 工作流程
 
-`Requirements → Architecture/Baseline → Specification → Tasks → Worktree Ready → Implementation → Automated Verification → Architecture Reconciliation → AI Review → Human Review → Closed`
+```mermaid
+flowchart LR
+    R[Requirements] --> G1[Approve → 停止 → 后续 Continue]
+    G1 --> A[Architecture]
+    A --> G2[Approve → 停止 → 后续 Continue]
+    G2 --> S[Specification]
+    S --> G3[Approve → 停止 → 后续 Continue]
+    G3 --> T[Tasks]
+    T --> G4[Approve → 停止 → 后续 Continue]
+    G4 --> W[Worktree Ready]
+    W --> I[Implementation]
+    I --> G5[Approve → 停止 → 后续 Continue]
+    G5 --> E[自动验证 + 工程扩展]
+    E --> B[Architecture Reconciliation]
+    B --> AI[AI Review]
+    AI --> H[Human Review]
+    H --> X[Closed]
+```
 
 原有六份阶段文档和 `nextPhase` 取值不变，新增名称都是门禁：
 
@@ -45,6 +62,40 @@
 | AI Review | 只读 reviewer 已给出一个固定结论 |
 | Human Review | 人工明确通过当前审查指纹 |
 | Closed | 阶段文档归档，并同步更新状态文件 |
+
+### 审批、角色与审计
+
+```mermaid
+stateDiagram-v2
+    [*] --> in_progress
+    in_progress --> awaiting_continue: approve
+    awaiting_continue --> in_progress: 后续用户明确 continue
+    in_progress --> ready_for_human_review: 扩展验证 + 架构对账 + AI Review
+    ready_for_human_review --> human_approved: 人工签署当前指纹
+    human_approved --> closed: 归档后记录关闭
+```
+
+| 机制 | 规则 |
+|---|---|
+| 角色 | Requester、Product、Architect、Implementer、Reviewer、Approver 映射到 Git 邮箱 |
+| Approve | 确认当前阶段并进入 `awaiting-continue`，不推进 `nextPhase` |
+| Continue | 必须来自后续用户消息；重新校验角色和文档指纹 |
+| 审计 | 每个 worktree 向自己的 `audit/*.jsonl` 分片追加事件，哈希链防篡改 |
+| 隐私 | Token、密码和私钥脱敏；不记录本机 worktree 绝对路径或完整 AI 输出 |
+| 失效 | 审批后文档变化使审批失效；Review 后代码或关键文档变化使签署失效 |
+
+### 工程质量扩展
+
+四项默认启用；每轮都必须写 `PASS`、`FAIL` 或有理由的 `N/A`：
+
+| 扩展 | 何时使用 | PASS 证据 |
+|---|---|---|
+| Testing | 所有存在可执行行为的改动 | 验收条件映射、命令、退出码、结果和未覆盖范围 |
+| PBT | Parser、业务规则、状态机、权限、幂等、排序、分页、并发 | Property、输入域、case 数、seed 和回归反例 |
+| Security | 输入、身份、权限、租户、Secrets、依赖或网络边界变化 | 信任边界、负向测试、检查结果和剩余风险 |
+| Resiliency | 外部依赖、重试、事务、部署或运行时变化 | 故障场景、超时/重试/幂等、回滚和观测证据 |
+
+没有 PBT 库时：`现有库 → 现有测试框架 + 确定性 seed 生成器 → 获批后新增依赖`。没有库本身不是 `N/A` 理由；只有不存在有价值的不变量时才可写明理由后跳过。
 
 ### Worktree 隔离
 
@@ -152,7 +203,7 @@ flowchart TD
 |---|---|---|---|
 | `/sdd init` | `sdd-init` / `/sdd-init` | 仓库还没有 SDD Loop 结构 | 创建项目规则和初始状态，不写业务内容 |
 | `/sdd` | `sdd-interview` / `/sdd-interview` | 启动产品或新一轮 Loop | 访谈并产出 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md` |
-| `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | 已初始化仓库需要补新门禁、迁移分流或审计 AGENTS | 无损升级现有 SDD 约定，不静默替换项目规则 |
+| `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | 已初始化仓库需要补新门禁、治理角色、分流或审计 AGENTS | 无损升级现有 SDD 约定，不伪造历史、不静默替换项目规则 |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation 和自动化验证已经完成 | 架构对账、记录 change surface、AI 审查并准备人工审查包 |
 
 pi 使用第一列；其他宿主调用 Skill 名称或斜杠别名。
@@ -171,6 +222,8 @@ sdd-loop check --json
 | `0` | 干净 |
 | `1` | 声明与仓库事实矛盾 |
 | `2` | 判据不可读，不给结论 |
+
+启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁；旧项目仍保持原有检查结果与退出码。
 
 ### 条款口径
 
@@ -194,12 +247,15 @@ your-project/
     │   └── [<stream>/]
     │       ├── status.md
     │       └── loop-N/
+    │           ├── audit/
+    │           │   └── <writer-id>.jsonl
     │           ├── requirements.md
     │           ├── architecture.md
     │           ├── specification.md
     │           ├── tasks.md
     │           ├── implementation.md
     │           └── verification.md
+    ├── sdd/extensions/        # 可选项目扩展；*.opt-in.md 控制启用
     └── archive/
 ```
 
