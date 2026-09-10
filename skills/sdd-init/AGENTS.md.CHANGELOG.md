@@ -28,6 +28,16 @@
 | 四项工程扩展 | 治理、角色与审计 | `testing,pbt,security,resiliency` | **常驻。**每轮显式判断测试、属性、安全和韧性风险 |
 | 动态项目扩展 | 治理、角色与审计 | `项目自定义扩展放在` | **常驻。**按阶段加载规则，避免把所有扩展永久塞进上下文 |
 
+同批漏记，2026-09-10 补登（在 one-piece-desktop 做 sdd-upgrade 时发现）：治理提交同时改了
+模板另外两处，未进本表会使老仓库补不齐治理条款。
+
+| 条款 | 在哪一节 | 探针 | 为什么加 |
+|---|---|---|---|
+| 阶段流水线加审批停点 | SDD 与 Loop | `-> Approval (stop)` | **常驻。**流水线图本身要画出「批准后停止、后续消息才继续」，否则图与治理节互相矛盾 |
+| Engineering Extensions 表 | Verification | `Engineering Extensions 表` | **常驻。**C9 门禁要求逐项证据，AGENTS.md 必须有对应条款依据 |
+| PBT 无库不免测 | Verification | `没有 PBT 库本身不是` | **常驻。**没有 PBT 库不构成 N/A 理由；PASS 必须记录 caseCount 和 seed |
+| 治理事件序列 | Verification | `结论写 \`review_completed\`` | **常驻。**AI Review 前的事件顺序与人工签署后的关闭序列，C8/C10 的判据来源 |
+
 
 ## 2026-09-08 · Worktree、Architecture Baseline 与审查闭环
 
