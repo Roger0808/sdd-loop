@@ -127,7 +127,7 @@ stateDiagram-v2
 
 要求 Node ≥ 20。
 
-**完整安装：四个 Skill + `check` / `guide` CLI**
+**完整安装：四个 Skill + `capabilities` / `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -185,7 +185,19 @@ npx skills@latest update -g
 
 安装后重启宿主或开启新会话。
 
+```bash
+sdd-loop capabilities --require governance@1 --host agents
+```
+
+治理项目开工前先运行。`--host` 取 `claude`、`agents`、`openclaw`、`hermes` 或 `pi`；Codex、Kimi Code 等读取共享 Agent Skills 的宿主使用 `agents`。命令不存在或退出非 0，表示 CLI/规则资源不完整，或当前宿主尚未安装 Skills；项目规则不会自动更新工具。
+
 ## 命令
+
+| CLI | 用途 |
+|---|---|
+| `sdd-loop capabilities --require governance@1 --host <宿主>` | Fail closed 检查 CLI、治理资源及当前宿主的 Skill 安装是否支持协议 1 |
+| `sdd-loop check` | 对账状态声明与仓库事实 |
+| `sdd-loop guide --type <doc.clause>` | 查询条款口径和现有编号族 |
 
 ### 四个工作流命令
 

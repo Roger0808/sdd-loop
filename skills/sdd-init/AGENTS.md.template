@@ -97,6 +97,7 @@ Requirements
 
 ## 治理、角色与审计
 
+- 本项目要求本机 sdd-loop 提供 `governance@1`，且治理 Skills 已安装到当前宿主。每轮开局必须先运行 `sdd-loop capabilities --require governance@1 --host <当前宿主>`，成功后再运行 `sdd-loop check`；宿主值为 Claude Code=`claude`、Codex/Kimi Code 等共享 Agent Skills 宿主=`agents`、OpenClaw=`openclaw`、Hermes=`hermes`、pi=`pi`。命令不存在、退出非 0、协议不受支持或宿主未就绪时立即停止。旧 CLI 可能忽略 `governanceVersion`，所以 check 绿色不能替代能力预检。工具与 Skills 的唯一来源是 `https://github.com/Roger0808/sdd-loop`；按该仓库 README 的更新步骤升级并开启新会话后重试。未经用户明确授权不得自动下载、安装、链接或切换工具版本。
 - 状态文件包含 `governanceVersion`、`gateStage`、`gateState`、`gateFingerprint`、`enabledExtensions` 和六类 `role*` 映射。它们是机器门禁，不在其他文件复制当前值。
 - 治理事件必须读取当前仓库的 `git user.name` / `git user.email`，并匹配状态文件登记的 Requester、Product、Architect、Implementer、Reviewer 或 Approver。缺身份、角色不匹配时停止，不编造临时身份。
 - 原始需求、问题答案、阶段审批、Continue、变更理由、工程扩展结论、AI Review 和人工签署写进当前 Loop 的 `audit/*.jsonl`。分片只追加，不修改、删除、重排旧事件；不得记录本机绝对 worktree 路径。

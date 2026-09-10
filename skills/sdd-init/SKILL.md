@@ -27,6 +27,8 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 
 ### 0. 先确认这是不是冷启动
 
+先运行 `sdd-loop capabilities --require governance@1 --host <当前宿主>`（Claude Code=`claude`、Codex/Kimi Code 等共享 Agent Skills 宿主=`agents`、OpenClaw=`openclaw`、Hermes=`hermes`、pi=`pi`）。命令不存在、退出非 0、协议不受支持或宿主未就绪时停止，指向 `https://github.com/Roger0808/sdd-loop` 的 README 更新步骤；未经用户明确授权不得自动下载、安装、链接或切换版本。能力预检成功后再继续：
+
 跑 `sdd-loop check`（pi 里是 `sdd_loop_check` 工具）：
 
 - 报**「还没有 SDD Loop 结构」** → 冷启动，继续往下走。

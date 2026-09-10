@@ -59,10 +59,11 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | `node --test --test-timeout=30000 --test-force-exit tests/<file>.test.js` | 单文件。**两个 flag 都不能省**：Node 默认测试超时无限，挂起的 handler 会让 run 挂死而不是变红；`--test-force-exit` 才是真正结束 run 的那个。 |
 | `node scripts/sdd-loop.mjs check --repo <dir>` | 状态对账 CLI。 |
 | `node scripts/sdd-loop.mjs guide --type <doc.clause> [--repo <dir>]` | 口径字典 CLI。 |
+| `node scripts/sdd-loop.mjs capabilities --require governance@1 --host <宿主>` | 治理环境能力预检；只读，协议、打包资源或宿主 Skill 安装缺失时退出 2。 |
 | `node scripts/sdd-loop.mjs _governance record --event-json <tmp> [--repo <dir>]` | Skills 内部事件入口；不作为用户工作流命令宣传。 |
 | `node scripts/sdd-loop.mjs init -g [--show]` | 把本包装进本机落点（`~/.claude/skills` / `~/.agents/skills` / OpenClaw state skills / Hermes `external_dirs` / pi）。**改代码后别拿真 home 试**，用 `HOME=<临时目录>` 跑；profile 测试同时控制对应环境变量与 PATH。 |
 | `CODEX_HOME=<临时目录> codex debug prompt-input "hi"` | 验 Codex 到底发现了哪些 skill——渲染模型可见的 prompt，离线、不调模型、不写盘。比让模型自述可靠，也是「Codex 认软链」这条结论的来源。 |
-| `node scripts/dead-exports.mjs` | 导出级可达性扫描。判据与盲区见脚本头注；当前基线 `TOTAL: 40 DEAD: 0`。 |
+| `node scripts/dead-exports.mjs` | 导出级可达性扫描。判据与盲区见脚本头注；当前基线 `TOTAL: 43 DEAD: 0`。 |
 
 ## Architecture
 
@@ -73,7 +74,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | 判定 | `src/validation/loop-check.js` | 状态对账**唯一判定源**：只返回数据，不渲染文案；判据读不出来时拒绝给任何结论。`buildLoopCheckReport()` 判一条流，`buildRepoCheckReport()` 是**聚合层，自己不判**——只发现、逐流委派、做算术（严重度取最坏：unusable > problem > ok）；打错的流名当**参数错**返回 `unknownStream`，不走下去说成冷启动 |
 | 治理 | `src/governance/protocol.js` + `src/validation/governance-check.js` | 事件格式、身份/角色、脱敏、分片哈希链、代码/文档指纹和 C6-C10；只有状态文件显式带治理版本时启用。 |
 | 安装计划 | `src/install/plan.js` | `init -g` 的**唯一判定源**：只算不写。OpenClaw 默认 state 复用 `~/.agents/skills`，自定义 `OPENCLAW_STATE_DIR` 写入该 state 的 `skills/`；Hermes 解析 config 并只追加 `skills.external_dirs`。 |
-| CLI | `scripts/sdd-loop.mjs` + `scripts/lib/` | `check` / `guide` / `init` 三个用户子命令和 Skills 内部 `_governance record`；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。 |
+| CLI | `scripts/sdd-loop.mjs` + `scripts/lib/` | `check` / `guide` / `capabilities` / `init` 四个用户子命令和 Skills 内部 `_governance record`；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。 |
 | pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd`、`/sdd init`、`/sdd upgrade`、`/sdd review` 四条路由；未知子命令只返回用法。 |
 | Skill · init | `skills/sdd-init/` | SKILL.md + AGENTS/CLAUDE/Baseline 模板 + `AGENTS.md.CHANGELOG.md` 与 `AGENTS.md.AUDIT.md`。模板不用会被宿主自动读走的真名。 |
 | Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编）。第 0 站**先定流、再捞 backlog**——顺序反了就筛不出该摆哪几条 |

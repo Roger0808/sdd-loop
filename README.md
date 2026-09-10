@@ -127,7 +127,7 @@ Audit verdicts: `RECOMMEND_ADOPTION`, `NEEDS_REVISION`, `KEEP_CURRENT`, `NOT_TES
 
 Requires Node ≥ 20.
 
-**Full: four Skills + `check` / `guide` CLI**
+**Full: four Skills + `capabilities` / `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -185,7 +185,19 @@ npx skills@latest update -g
 
 Restart the host or open a new session after installation.
 
+```bash
+sdd-loop capabilities --require governance@1 --host agents
+```
+
+Run this before working in a governance-enabled repository. Set `--host` to `claude`, `agents`, `openclaw`, `hermes`, or `pi`; Codex, Kimi Code, and other shared Agent Skills hosts use `agents`. A missing command or non-zero exit means the CLI/rule resources are incomplete or Skills are not installed for that host. Project rules never auto-update tools.
+
 ## Commands
+
+| CLI | Purpose |
+|---|---|
+| `sdd-loop capabilities --require governance@1 --host <host>` | Fail-closed check that the CLI, governance resources and host Skill installation support protocol 1 |
+| `sdd-loop check` | Reconcile status declarations with repository facts |
+| `sdd-loop guide --type <doc.clause>` | Show clause guidance and existing ID families |
 
 ### Four workflow commands
 

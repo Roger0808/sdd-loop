@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { buildRepoCheckReport } from "../src/validation/loop-check.js";
 import { runInit } from "./lib/init.mjs";
 import { runGovernance } from "./lib/governance.mjs";
+import { runCapabilities } from "./lib/capabilities.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
 import { pickExample } from "../src/spec-guide/example.js";
@@ -29,6 +30,7 @@ const HELP = `sdd-loop — SDD Loop 仪器
 用法：
   sdd-loop check [--repo <dir>] [--stream <name>] [--status-file <path>] [--archive-dir <path>] [--json]
   sdd-loop guide [--type <doc.clause>] [--repo <dir>] [--docs-dir <path>] [--json]
+  sdd-loop capabilities [--require <name@protocol-version>] [--host <host>] [--json]
   sdd-loop init -g [--claude] [--agents] [--openclaw] [--hermes] [--pi] [--show]
 
 init -g：把本包装进这台机器的 agent 宿主。五个落点：
@@ -58,6 +60,11 @@ guide：写之前给要求。「我要写这一类东西，该写哪几项」+ �
   --type          条款类型，例 specification.behavior
   --repo          仓库根，默认当前目录
   --docs-dir      编号族扫描目录，默认 docs
+
+capabilities：只读检查当前安装是否包含指定协议所需的 CLI、Skills 和规则资源。
+  --require       项目要求的能力，例 governance@1；缺失或协议不支持时退出 2
+  --host          当前宿主落点：claude / agents / openclaw / hermes / pi
+  --json          输出可供工具读取的能力报告
 
 退出码：
   0  干净 / 查询成功
@@ -305,6 +312,13 @@ function main() {
   }
   if (command === "check") return runCheck(args);
   if (command === "guide") return runGuide(args);
+  if (command === "capabilities") {
+    return runCapabilities(args, {
+      stdout: (s) => process.stdout.write(s),
+      stderr: (s) => process.stderr.write(s),
+      exit: (code) => process.exit(code),
+    }, { packageRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") });
+  }
   if (command === "init") {
     return runInit(args, {
       packageRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),

@@ -184,6 +184,14 @@ test("README 同时提供完整安装、Skills-only 安装和对应更新方式"
   }
 });
 
+test("双语 README 给出治理能力预检，并明确项目规则不自动更新工具", () => {
+  for (const { file, text } of READMES) {
+    assert.ok(text.includes("sdd-loop capabilities --require governance@1"), `${file} 漏了治理能力预检`);
+    assert.ok(text.includes("--host"), `${file} 没要求验证当前宿主的 Skill 安装`);
+    assert.match(text, /never auto-update tools|不会自动更新工具/, `${file} 没写自动更新边界`);
+  }
+});
+
 test("README 承诺的本地文件都存在（安装步骤与链接不许断）", () => {
   for (const { file, text } of READMES) {
     for (const [, p] of text.matchAll(/\]\((?!https?:)([^)]+)\)/g)) {

@@ -236,6 +236,17 @@ test("四项工程扩展有独立规则，PBT 写清无库降级而不是直接 
   assert.ok(pbt.includes("caseCount") && pbt.includes("seed"));
 });
 
+test("模板在 check 前强制 governance 能力预检，失败时不自动升级", () => {
+  const text = agentsTemplate();
+  const capability = text.indexOf("sdd-loop capabilities --require governance@1");
+  const check = text.indexOf("sdd-loop check", capability);
+  assert.ok(capability >= 0 && check > capability, "必须先预检能力，再运行 check");
+  assert.ok(text.slice(capability, check).includes("--host <当前宿主>"), "能力预检没有验证当前宿主能否发现 Skills");
+  assert.ok(text.includes("check 绿色不能替代能力预检"));
+  assert.ok(text.includes("https://github.com/Roger0808/sdd-loop"));
+  assert.ok(text.includes("未经用户明确授权不得自动下载、安装、链接或切换工具版本"));
+});
+
 test("模板留了占位符，落地时必须替换（写死项目名等于把上一个项目的上下文发给所有人）", () => {
   const text = agentsTemplate();
   assert.ok(text.includes("{{PROJECT_NAME}}"), "项目名占位符丢了");

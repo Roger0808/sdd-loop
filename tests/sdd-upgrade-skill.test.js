@@ -78,6 +78,17 @@ test("动手之前的四道门禁逐条在场（check 绿 / worktree 干净 / �
   assert.ok(section.includes("别人正在这个仓库里干活"), "第 4 道（确认没人在干活）丢了——迁形态会让别人手上的路径当场失效");
 });
 
+test("upgrade 在 check 前验证 governance@1，缺能力只提示更新不自动动宿主", () => {
+  const text = skill();
+  const section = text.slice(text.indexOf("## 动手之前"), text.indexOf("## 动作一"));
+  const capability = section.indexOf("sdd-loop capabilities --require governance@1");
+  const check = section.indexOf("sdd-loop check", capability);
+  assert.ok(capability >= 0 && check > capability);
+  assert.ok(section.slice(capability, check).includes("--host <当前宿主>"), "upgrade 没验证当前宿主能否发现 Skills");
+  assert.ok(section.includes("check 绿色不能替代能力预检"));
+  assert.ok(section.includes("未经用户明确授权不得自动升级"));
+});
+
 // 动作一整个建立在变更记录那张探针表上。文件被搬走或改名，upgrade 会去读一个
 // 不存在的清单，然后要么什么都不补，要么退回整份 diff——那正是它明确不做的事。
 test("变更记录是动作一的真相源：skill 指的那份文件真的在", () => {
