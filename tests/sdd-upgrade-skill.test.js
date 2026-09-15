@@ -89,6 +89,16 @@ test("upgrade 在 check 前验证 governance@1，缺能力只提示更新不自�
   assert.ok(section.includes("未经用户明确授权不得自动升级"));
 });
 
+test("旧 AGENTS 自审降级与新 subagent 门禁冲突时不只追加，需 Candidate 逐项授权", () => {
+  const text = skill();
+  assert.ok(text.includes("同一 Agent 清理实施上下文后审查"));
+  assert.ok(text.includes("不得只追加"));
+  assert.ok(text.includes("两条规则并存"));
+  assert.ok(text.includes("暂停动作一"));
+  assert.ok(text.includes("在 Candidate 中逐项标明旧规则删除和新规则加入"));
+  assert.ok(text.includes("未授权时保留旧文件"));
+});
+
 // 动作一整个建立在变更记录那张探针表上。文件被搬走或改名，upgrade 会去读一个
 // 不存在的清单，然后要么什么都不补，要么退回整份 diff——那正是它明确不做的事。
 test("变更记录是动作一的真相源：skill 指的那份文件真的在", () => {

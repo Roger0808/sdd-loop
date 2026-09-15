@@ -109,7 +109,12 @@ stateDiagram-v2
 - 本轮 `architecture.md` 描述本轮方案；`docs/architecture/` 描述系统当前事实。
 - 优先沿用已有架构目录；没有时，单系统用 `docs/architecture/overview.md`，分流项目用 `docs/architecture/<stream>.md`。架构图使用 Mermaid 或 ASCII。
 - 自动化验证后，按最终代码更新 Architecture Baseline，并列出代码、配置、数据、接口、部署、测试和文档改动面。
-- 随后进行独立、只读的 AI 审查。结论只能是 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED` 或 `NOT_REVIEWABLE_SAFELY`。
+- AI Review 前停下由人类选择审查路径：留在当前 Agent 时由只读 subagent 审；换 Agent 时确认对象、生成 handoff 并等待结果。缺独立 reviewer 不自审。结论只能是 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED` 或 `NOT_REVIEWABLE_SAFELY`。
+
+| 人类选择 | 当前 Agent 的动作 | 审查者 |
+|---|---|---|
+| 留在当前 Agent | 启动只读 subagent；本体仅整理结果 | 独立 subagent |
+| 换一个 Agent | 追问具体对象，交付 handoff 后等待 | 指定 Agent 的独立只读 reviewer |
 - `verification.md` 固定包含 `Automated Verification`、`Architecture Reconciliation & Change Surface`、`AI Code Review` 和 `Human Review Packet`。
 - 代码或关键文档变化会使旧审查失效。只有人工记录确认人、时间、审查版本和指纹后才能关闭 Loop。
 

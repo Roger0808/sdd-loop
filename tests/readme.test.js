@@ -192,6 +192,14 @@ test("双语 README 给出治理能力预检，并明确项目规则不自动更
   }
 });
 
+test("双语 README 说明 AI Review 人类选择、只读 subagent 与换 Agent handoff", () => {
+  for (const { file, text } of READMES) {
+    assert.ok(text.includes("subagent"), `${file} 没说明当前 Agent 的审查隔离`);
+    assert.ok(text.includes("handoff"), `${file} 没说明换 Agent 的交接`);
+    assert.match(text, /human choice|人类选择/, `${file} 没说明审查前由人类选择`);
+  }
+});
+
 test("README 承诺的本地文件都存在（安装步骤与链接不许断）", () => {
   for (const { file, text } of READMES) {
     for (const [, p] of text.matchAll(/\]\((?!https?:)([^)]+)\)/g)) {

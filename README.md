@@ -109,7 +109,12 @@ Without a PBT library use: `existing library → existing test framework + deter
 - Loop-local `architecture.md` describes this round's design. `docs/architecture/` describes the system as it exists now.
 - Reuse an existing architecture layout. Otherwise use `docs/architecture/overview.md` for one system or `docs/architecture/<stream>.md` for split repos. Diagrams use Mermaid or ASCII.
 - After automated verification, update the Architecture Baseline from final code and list the code, configuration, data, API, deployment, test and documentation change surface.
-- Then run an independent, read-only AI review. Its only valid verdicts are `READY_FOR_HUMAN_REVIEW`, `CHANGES_REQUIRED` and `NOT_REVIEWABLE_SAFELY`.
+- Before AI Review, pause for a human choice: stay with the current Agent's read-only subagent, or name another Agent and receive a handoff. No self-review or silent fallback. Valid verdicts: `READY_FOR_HUMAN_REVIEW`, `CHANGES_REQUIRED`, `NOT_REVIEWABLE_SAFELY`.
+
+| Human choice | Current Agent action | Reviewer |
+|---|---|---|
+| Stay | Start a read-only subagent; only consolidate its result | Independent subagent |
+| Switch | Ask which Agent, provide handoff, then wait | Named Agent's isolated read-only reviewer |
 - `verification.md` contains `Automated Verification`, `Architecture Reconciliation & Change Surface`, `AI Code Review` and `Human Review Packet`.
 - Any code or critical-document change invalidates the old review. A Loop closes only after a human records approver, time, reviewed version and fingerprint.
 

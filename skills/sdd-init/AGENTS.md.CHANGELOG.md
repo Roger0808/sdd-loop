@@ -23,6 +23,12 @@
 |---|---|---|---|
 | governance 协议与宿主能力预检 | 治理、角色与审计 | `sdd-loop capabilities --require governance@1 --host` | **常驻。**多人只拉项目代码时可能仍在使用旧 CLI，或没有把 Skills 安装到当前宿主；必须在开工前 fail closed |
 
+## 2026-09-15 · AI Review 审查者由人类选择
+
+| 条款 | 在哪一节 | 探针 | 为什么加 |
+|---|---|---|---|
+| 审查前人类选择与只读隔离 | Verification | `留在当前 Agent 的只读 subagent 审` | **常驻。**审查前停下由人类选择当前或另一 Agent；当前 Agent 本体不得自审，换 Agent 必须有 handoff，缺独立 reviewer 不假称完成 |
+
 ## 2026-09-09 · 角色、分片审计、审批停点与工程扩展
 
 | 条款 | 在哪一节 | 探针 | 为什么加 |

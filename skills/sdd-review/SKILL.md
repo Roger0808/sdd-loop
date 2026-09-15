@@ -40,11 +40,14 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 
 没有 PBT 库但存在简单不变量时，用现有测试框架加测试目录内的确定性随机生成器：固定 seed、明确样本数、输出失败输入，并把缩减后的最小反例固化为普通回归测试。复杂生成或自动 shrinking 才申请新增成熟依赖，不在项目里自造通用 PBT 框架。
 
-## 独立 AI Review
+## AI Review 前的人类选择门禁
 
-优先启动一个没有实施上下文的独立 reviewer，只给它已确认文档、实施基线、当前指纹和原始 diff。reviewer 只读：可以运行不改代码的复现、测试和构建，不修复问题、不修改文档、不替用户确认。
+自动化验证、架构回写和工程扩展证据完成后，**在启动任何 reviewer 前停下来**，向人类问一次：「这轮 AI Review 要留在当前 Agent 的只读 subagent 上跑，还是换一个 Agent？」，然后结束当前响应，等待人类在后续消息中选择。不得把先前的阶段批准、Continue、上一轮的审查者或默认宿主当成本轮授权；审查失效需要重跑时重新询问。未取得明确选择，不启动 AI Review，也不写 `review_completed`。
 
-无法启动独立 reviewer 时，同一 Agent 只能在清理实施推理上下文后做一次独立审查，并在报告顶部标注“降级：非独立 reviewer”。
+- **留在当前 Agent**：由当前 Agent 启动没有实施上下文的独立只读 subagent，把审查对象和任务交给它。当前 Agent 本体只能准备材料、接收结果和整理审查包，不能自行审查。当前运行环境不能启动 subagent 时停止并说明，不能退化为同一 Agent 清理上下文后自审。
+- **换一个 Agent**：若人类没有点名，先问「要换到哪个 Agent/宿主？」并再次停下等待。确认后生成针对该 Agent 的 handoff，交给人类或其指定的协作渠道；不擅自启动外部会话、发送消息或在当前 Agent 上代审。handoff 至少写明目标宿主/Agent 的审查 Skill 入口、可访问的仓库 ref、流/Loop、基线 commit 与当前 HEAD、审查指纹、已确认阶段文档和 Architecture Baseline 路径、任务范围、原始 diff 与 change surface、验证及扩展证据、只读边界、三个允许的结论、发现所需的文件/行号/复现证据，以及结果如何交回本轮 `verification.md`。若审查对象包含未提交改动且目标 Agent 无法读同一工作区，先确认安全的 diff/文件交接方式；材料未交齐时不得宣称审查已启动。仅提供必要材料，不附本机绝对 worktree 路径、Secrets 或无关会话记录。目标 Agent 也必须在与实施上下文隔离的只读 reviewer 会话或 subagent 中执行；若做不到，报告 `NOT_REVIEWABLE_SAFELY`，不要假称独立审查。
+
+独立 reviewer 只给已确认文档、实施基线、当前指纹和原始 diff。reviewer 只读：可以运行不改代码的复现、测试和构建，不修复问题、不修改文档、不替用户确认。审查结果回来后，当前 Agent 重新校验指纹；代码或关键文档变化时旧结果失效，并从自动化验证和架构回写重新开始。
 
 审查要对照任务与规格，覆盖：正确性、边界/失败/权限路径、兼容性、数据与回滚、配置/部署、测试有效性、文档和 Architecture Baseline 是否与代码一致。只报告可复现、有具体文件/行号和影响的发现。
 
@@ -54,7 +57,7 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 
 1. **Automated Verification**：命令、环境、退出码、结果和未执行项。
 2. **Architecture Reconciliation & Change Surface**：更新的 Baseline 路径、反向对账结论和七类改动面。
-3. **AI Code Review**：reviewer 身份/降级、指纹、发现、残余风险和唯一结论。
+3. **AI Code Review**：人类选择的审查路径、reviewer 身份、handoff/结果来源、指纹、发现、残余风险和唯一结论。handoff 发出但结果未返回时保持待审，不把选择或交接写成审查完成。
 4. **Human Review Packet**：人工应重点看的 diff、架构图、验证证据、未决项，以及尚未填写的确认人/时间/版本/指纹。
 
 最终只能给出一个 AI 结论：

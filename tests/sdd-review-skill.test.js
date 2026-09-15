@@ -42,6 +42,33 @@ test("指纹覆盖未提交改动，关键事实改变会使旧审查失效", ()
   assert.ok(text.includes("旧审查失效"));
 });
 
+test("AI Review 先等人类选择，当前 Agent 本体不得自审或自动降级", () => {
+  const text = review();
+  const gate = text.slice(text.indexOf("## AI Review 前的人类选择门禁"), text.indexOf("## 写入 verification.md"));
+  assert.ok(gate.includes("启动任何 reviewer 前停下来"));
+  assert.ok(gate.includes("等待人类在后续消息中选择"));
+  assert.ok(gate.includes("未取得明确选择，不启动 AI Review，也不写 `review_completed`"));
+  assert.ok(gate.includes("独立只读 subagent"));
+  assert.ok(gate.includes("当前 Agent 本体只能准备材料、接收结果和整理审查包，不能自行审查"));
+  assert.ok(gate.includes("不能退化为同一 Agent 清理上下文后自审"));
+  assert.ok(gate.includes("审查失效需要重跑时重新询问"));
+});
+
+test("换 Agent 必须先确认具体对象并交付可复核、只读的 handoff", () => {
+  const text = review();
+  const gate = text.slice(text.indexOf("## AI Review 前的人类选择门禁"), text.indexOf("## 写入 verification.md"));
+  assert.ok(gate.includes("要换到哪个 Agent/宿主？"));
+  assert.ok(gate.includes("再次停下等待"));
+  for (const required of [
+    "基线 commit", "当前 HEAD", "审查指纹", "已确认阶段文档", "Architecture Baseline",
+    "原始 diff", "change surface", "验证及扩展证据", "只读边界", "文件/行号/复现证据",
+  ]) assert.ok(gate.includes(required), `handoff 缺少 ${required}`);
+  assert.ok(gate.includes("不擅自启动外部会话、发送消息或在当前 Agent 上代审"));
+  assert.ok(gate.includes("目标宿主/Agent 的审查 Skill 入口"));
+  assert.ok(gate.includes("未提交改动且目标 Agent 无法读同一工作区"));
+  assert.ok(text.includes("handoff 发出但结果未返回时保持待审"));
+});
+
 test("verification 四节、三个 AI 结论和人工签字门禁都在", () => {
   const text = review();
   for (const section of ["Automated Verification", "Architecture Reconciliation & Change Surface", "AI Code Review", "Human Review Packet"]) {
@@ -75,6 +102,10 @@ test("AGENTS 模板对单流常驻架构/审查门禁，worktree 只在分流整
   const text = template();
   assert.ok(text.includes("必须建立或审查长期 Architecture Baseline"));
   assert.ok(text.includes("必须加载 `sdd-review`"));
+  assert.ok(text.includes("AI Review 前先停下向人类确认"));
+  assert.ok(text.includes("留在当前 Agent 的只读 subagent 审"));
+  assert.ok(text.includes("当前 Agent 本体不得自审"));
+  assert.ok(!text.includes("同一 Agent 清理实施上下文后审查"));
   const streamSection = text.slice(text.indexOf("## 流的划分与跨流改动"), text.indexOf("## 阶段门禁"));
   assert.ok(streamSection.includes("每个 stream + Loop 必须使用独立 Git 分支和 worktree"));
   assert.ok(streamSection.includes("单流：删掉本节整节"));

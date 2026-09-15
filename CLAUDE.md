@@ -15,7 +15,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 - `skills/sdd-init/`：把一个仓库初始化成按 SDD Loop 运行（AGENTS.md 门禁规则 + CLAUDE.md 转引 + status.md），每个仓库一次。**AGENTS.md 是承重墙**——`loop-check.js` 执行的就是它写的那条「矛盾时停下请人确认」，没有它 check 是在判一个仓库从没声明过的约定。所以模板逐字复制，不许现写。
 - `skills/sdd-interview/`：七站提问 + 收官拆任务（冷启动仪器，每个产品一次）。**「七」是提问站数**；拆任务勘察为主、不算提问站，编进站数会让人以为还有一轮问题要答。
 - `skills/sdd-upgrade/`：**已经**在跑 SDD Loop 的仓库的条款对齐、形态迁移（单流 → 分流）和 AGENTS Candidate 审计。删除、移动、合并必须逐项授权。
-- `skills/sdd-review/`：实施后的架构反向回写、change surface、独立只读 AI Review 和人工审查包；不修复、不替人签字。
+- `skills/sdd-review/`：实施后的架构反向回写、change surface、AI Review 前的人类选择与只读 subagent/跨 Agent handoff、人工审查包；不修复、不替人签字。
 
 四者的分界：init 建约定不产业务内容，interview 产前四份内容，upgrade 只改已有约定，review 在实施后收口但不替人工确认。
 
@@ -79,7 +79,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | Skill · init | `skills/sdd-init/` | SKILL.md + AGENTS/CLAUDE/Baseline 模板 + `AGENTS.md.CHANGELOG.md` 与 `AGENTS.md.AUDIT.md`。模板不用会被宿主自动读走的真名。 |
 | Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编）。第 0 站**先定流、再捞 backlog**——顺序反了就筛不出该摆哪几条 |
 | Skill · 升级 | `skills/sdd-upgrade/SKILL.md` | 老仓库的条款对齐、形态迁移和逐项授权的 AGENTS Candidate 审计。 |
-| Skill · 审查 | `skills/sdd-review/SKILL.md` | 实施指纹、架构回写、change surface、独立只读 AI Review 和人工审查门禁。 |
+| Skill · 审查 | `skills/sdd-review/SKILL.md` | 实施指纹、架构回写、change surface、人类选择 reviewer、只读 subagent/跨 Agent handoff 和人工审查门禁。 |
 | 首页 | `README.md`（英文，默认）+ `README_zh.md`（简体中文） | **改一份必须改另一份**。`tests/readme.test.js` 对两份跑同一批锁，数字与名字（站数 / 条款类型 / 宿主 / 子命令）一律从真相源推导，只有「用什么写法表达这个数」按语言分 |
 
 ## 红线（复审时盯这些）
