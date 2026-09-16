@@ -23,12 +23,19 @@ discover → validate → plan → preflight → setup
          → run → collect → teardown → verify-cleanup
 ```
 
-### 1. Discover（发现）
+### 1. Discover（发现与脚手架引导）
 探测项目自身的测试插件清单（遵循「不硬编码任何项目的目录约定」）：
 - 优先尊重用户显式传入的清单路径参数或状态文件约定的 `testPluginManifest`；
 - 环境变量 `SDD_TEST_PLUGIN` 可覆盖清单位置；
 - 默认回退探测候选：`tests/sdd/plugin.yaml`（或 `.json`）、`docs/testing/plugin.yaml`（或 `.json`）。
-- 若均不存在，提示用户当前项目尚未配置测试插件，可运行交互引导指定路径或生成脚手架。
+- **冷启动交互引导（Scaffolding Guide）**：
+  若项目中均未发现清单文件，主动询问用户并引导生成合规的测试插件脚手架：
+  1. **技术栈与入口**：询问项目的测试框架（如 Node、Playwright、Jest、pytest、Go test），确定受控的 `entrypoint.argv` 数组；
+  2. **测试维度与画像**：询问需要覆盖哪些套件（UI、业务 API、PBT 守恒、安全 IDOR、并发压测），配置 `profiles`（如 `smoke`、`regression`）；
+  3. **环境与外部数据源**：询问需要的环境变量标识符（如 `TEST_DB_URL`、`TEST_TOKEN`），只记录 `name` 和布尔 `secret`，**严禁接收明文**；
+  4. **资源锁排他**：询问需要保护的共享资源（如 `mysql:test_db`、`port:8080`），防止并发冲突；
+  5. **Teardown 平账**：确认测试结束后的脏数据清理与平账核对策略（强制 `finally` 清理，未平账严禁判 PASS）；
+  6. 交互确认后在项目落地 `tests/sdd/plugin.yaml`（或用户指定路径），并自动调用 `sdd-loop _full_test verify-manifest` 校验。
 
 ### 2. Validate（协议校验）
 读取插件清单并由 `validatePluginManifest` 校验安全规则：
