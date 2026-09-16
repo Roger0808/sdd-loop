@@ -27,8 +27,16 @@ const HOTFIX_RESOURCES = Object.freeze([
   "skills/sdd-hotfix/SKILL.md",
 ]);
 
+const FULL_TEST_RESOURCES = Object.freeze([
+  "scripts/lib/full-test.mjs",
+  "src/full-test/protocol.js",
+  "skills/sdd-full-test/SKILL.md",
+  "skills/sdd-full-test/references/wms-reference.md",
+]);
+
 const GOVERNANCE_SKILLS = Object.freeze(["sdd-init", "sdd-interview", "sdd-upgrade", "sdd-review"]);
 const HOTFIX_SKILLS = Object.freeze(["sdd-hotfix"]);
+const FULL_TEST_SKILLS = Object.freeze(["sdd-full-test"]);
 
 function summarizeHostReadiness(packageRoot, { host, home, env, requiredSkills }) {
   if (!host) return null;
@@ -100,6 +108,20 @@ export function buildCapabilityReport(packageRoot, options = {}) {
       return true;
     }
   });
+  const missingFullTestResources = FULL_TEST_RESOURCES.filter((rel) => {
+    try {
+      return !fs.statSync(path.join(root, rel)).isFile();
+    } catch {
+      return true;
+    }
+  });
+  const fullTestCapability = {
+    available: missingFullTestResources.length === 0,
+    supportedProtocolVersions: [1],
+    checks: ["T1", "T2", "T3"],
+    engineeringExtensions: [...BUILTIN_EXTENSIONS],
+    missingResources: missingFullTestResources,
+  };
   const report = {
     schemaVersion: CAPABILITY_SCHEMA_VERSION,
     package: "sdd-loop",
@@ -118,6 +140,7 @@ export function buildCapabilityReport(packageRoot, options = {}) {
         engineeringExtensions: [...BUILTIN_EXTENSIONS],
         missingResources: [...missingResources, ...missingHotfixResources].filter((value, index, all) => all.indexOf(value) === index),
       },
+      "full-test": fullTestCapability,
     },
   };
   const readinessOptions = {
@@ -127,9 +150,14 @@ export function buildCapabilityReport(packageRoot, options = {}) {
   };
   const hostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: GOVERNANCE_SKILLS });
   const hotfixHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: HOTFIX_SKILLS });
+  const fullTestHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: FULL_TEST_SKILLS });
   if (hostReadiness) {
     report.hostReadiness = hostReadiness;
-    report.hostReadinessByCapability = { governance: hostReadiness, hotfix: hotfixHostReadiness };
+    report.hostReadinessByCapability = {
+      governance: hostReadiness,
+      hotfix: hotfixHostReadiness,
+      "full-test": fullTestHostReadiness,
+    };
   }
   return report;
 }

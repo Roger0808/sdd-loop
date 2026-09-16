@@ -17,6 +17,7 @@ import { runInit } from "./lib/init.mjs";
 import { runGovernance } from "./lib/governance.mjs";
 import { runCapabilities } from "./lib/capabilities.mjs";
 import { runHotfix } from "./lib/hotfix.mjs";
+import { runFullTestCli } from "./lib/full-test.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
 import { pickExample } from "../src/spec-guide/example.js";
@@ -341,6 +342,13 @@ function main() {
   }
   if (command === "_hotfix") {
     return runHotfix(args, {
+      stdout: (s) => process.stdout.write(s),
+      stderr: (s) => process.stderr.write(s),
+      exit: (code) => process.exit(code),
+    });
+  }
+  if (command === "_full_test") {
+    return runFullTestCli(args, {
       stdout: (s) => process.stdout.write(s),
       stderr: (s) => process.stderr.write(s),
       exit: (code) => process.exit(code),

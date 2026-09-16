@@ -69,6 +69,7 @@ test("扩展面：恰好两个工具 + /sdd 命令（12 工具 → 2 工具）",
   assert.deepEqual([...tools.keys()].sort(), ["sdd_loop_check", "sdd_spec_guide"]);
   assert.ok(commands.has("sdd"), "/sdd 命令没注册");
   assert.ok(commands.has("sdd-hotfix"), "/sdd-hotfix 命令没注册");
+  assert.ok(commands.has("sdd-full-test"), "/sdd-full-test 命令没注册");
 });
 
 test("/sdd hotfix 与 /sdd-hotfix 都加载 sdd-hotfix，且先只读确认", { skip }, async () => {
@@ -81,6 +82,27 @@ test("/sdd hotfix 与 /sdd-hotfix 都加载 sdd-hotfix，且先只读确认", { 
     assert.match(message, /首次响应只做只读勘察/);
     assert.match(message, /等我一次确认/);
   }
+});
+
+test("/sdd full-test 与 /sdd-full-test 都加载 sdd-full-test，作为证据执行器", { skip }, async () => {
+  const { commands, sent } = await loadExtension();
+  await commands.get("sdd").handler("full-test", {});
+  await commands.get("sdd-full-test").handler("", {});
+  assert.equal(sent.length, 2);
+  for (const message of sent) {
+    assert.match(message, /sdd-full-test skill/);
+    assert.match(message, /证据执行器/);
+    assert.match(message, /manifest\.sha256/);
+    assert.match(message, /不要替我下通过结论/);
+    assert.match(message, /不硬编码项目目录约定/);
+  }
+
+  // 验证可配置路径支持：携带自定义路径参数时透传给 Skill，不报用法错误
+  await commands.get("sdd").handler("full-test custom/test/plugin.yaml", {});
+  await commands.get("sdd-full-test").handler("custom/test/plugin.yaml", {});
+  assert.equal(sent.length, 4);
+  assert.match(sent[2], /custom\/test\/plugin\.yaml/);
+  assert.match(sent[3], /custom\/test\/plugin\.yaml/);
 });
 
 // ---------------------------------------------------------------- sdd_loop_check

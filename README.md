@@ -144,7 +144,7 @@ Audit verdicts: `RECOMMEND_ADOPTION`, `NEEDS_REVISION`, `KEEP_CURRENT`, `NOT_TES
 
 Requires Node ≥ 20.
 
-**Full: five Skills + `capabilities` / `check` / `guide` CLI**
+**Full: six Skills + `capabilities` / `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -161,7 +161,7 @@ npx skills@latest add Roger0808/sdd-loop -g
 
 | Target | Installation |
 |---|---|
-| Packaged Skills | [sdd-init](skills/sdd-init), [sdd-interview](skills/sdd-interview), [sdd-upgrade](skills/sdd-upgrade), [sdd-review](skills/sdd-review), [sdd-hotfix](skills/sdd-hotfix) |
+| Packaged Skills | [sdd-init](skills/sdd-init), [sdd-interview](skills/sdd-interview), [sdd-upgrade](skills/sdd-upgrade), [sdd-review](skills/sdd-review), [sdd-hotfix](skills/sdd-hotfix), [sdd-full-test](skills/sdd-full-test) |
 | Claude Code | `~/.claude/skills/` |
 | Agent Skills hosts | `~/.agents/skills/` — Codex, Gemini CLI, GitHub Copilot, Cursor, Windsurf, OpenCode, OpenClaw, Kimi Code, Antigravity, Factory Droid, Roo Code |
 | Hermes Agent | registered through its skills configuration |
@@ -205,6 +205,7 @@ Restart the host or open a new session after installation.
 ```bash
 sdd-loop capabilities --require governance@1 --host agents
 sdd-loop capabilities --require hotfix@1 --host agents
+sdd-loop capabilities --require full-test@1 --host agents
 ```
 
 Run this before working in a governance-enabled repository. Set `--host` to `claude`, `agents`, `openclaw`, `hermes`, or `pi`; Codex, Kimi Code, and other shared Agent Skills hosts use `agents`. A missing command or non-zero exit means the CLI/rule resources are incomplete or Skills are not installed for that host. Project rules never auto-update tools.
@@ -215,10 +216,11 @@ Run this before working in a governance-enabled repository. Set `--host` to `cla
 |---|---|
 | `sdd-loop capabilities --require governance@1 --host <host>` | Fail-closed check that the CLI, governance resources and host Skill installation support protocol 1 |
 | `sdd-loop capabilities --require hotfix@1 --host <host>` | Check the Hotfix protocol, governance dependency and host discovery of `sdd-hotfix` |
+| `sdd-loop capabilities --require full-test@1 --host <host>` | Check the Full-Test protocol resources and host discovery of `sdd-full-test` |
 | `sdd-loop check` | Reconcile status declarations with repository facts |
 | `sdd-loop guide --type <doc.clause>` | Show clause guidance and existing ID families |
 
-### Five workflow commands
+### Six workflow commands
 
 ```mermaid
 flowchart TD
@@ -227,6 +229,7 @@ flowchart TD
     A -- Yes --> B{What needs to happen?}
     B -- Start or continue Loop documents --> N["/sdd · sdd-interview"]
     B -- Update rules, streams or AGENTS --> U["/sdd upgrade · sdd-upgrade"]
+    B -- Run full test suite & collect evidence --> T["/sdd-full-test or /sdd full-test · sdd-full-test"]
     B -- Close verified implementation --> R["/sdd review · sdd-review"]
     B -- Independent urgent fix --> H["/sdd-hotfix or /sdd hotfix · sdd-hotfix"]
 ```
@@ -236,6 +239,7 @@ flowchart TD
 | `/sdd init` | `sdd-init` / `/sdd-init` | A repository has no SDD Loop structure | Creates the repository rules and initial status; does not write product content |
 | `/sdd` | `sdd-interview` / `/sdd-interview` | Starting a product or a new Loop | Interviews and produces `requirements.md`, `architecture.md`, `specification.md` and `tasks.md` |
 | `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | An initialized repository needs current gates, governance roles, split-stream migration or AGENTS audit | Upgrades existing SDD conventions without inventing history or silently replacing project rules |
+| `/sdd full-test`, `/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | Project test suites need execution to collect an immutable evidence bundle | Executes tests, builds evidence bundle with SHA-256 manifest, proposes `verification.md` facts and extension claims |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation and automated verification are complete | Reconciles architecture, records change surface, runs AI review and prepares human review |
 | `/sdd hotfix`, `/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | The user chooses an urgent fix that must not advance the ordinary Loop | One Hotfix document, isolated audit, verification, AI Review and human sign-off |
 

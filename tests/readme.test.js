@@ -139,13 +139,14 @@ test("README 里的 sdd-loop 命令都是真实子命令", () => {
   }
 });
 
-test("README 写清五个工作流命令及对应 Skill", () => {
+test("README 写清六个工作流命令及对应 Skill", () => {
   const routes = [
     ["/sdd init", "sdd-init"],
     ["/sdd", "sdd-interview"],
     ["/sdd upgrade", "sdd-upgrade"],
     ["/sdd review", "sdd-review"],
     ["/sdd-hotfix", "sdd-hotfix"],
+    ["/sdd-full-test", "sdd-full-test"],
   ];
   for (const { file, text } of READMES) {
     for (const [route, skill] of routes) {

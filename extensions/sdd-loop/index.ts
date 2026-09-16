@@ -15,6 +15,7 @@
  *   /sdd upgrade 加载 sdd-upgrade skill（升级条款、分流形态或 AGENTS 审计）
  *   /sdd review  加载 sdd-review skill（架构回写 + AI/人工审查收口）
  *   /sdd hotfix 与 /sdd-hotfix 加载 sdd-hotfix skill（独立单文档修复通道）
+ *   /sdd full-test 与 /sdd-full-test 加载 sdd-full-test skill（全维度测试调度与证据采集）
  */
 
 import { Type } from "@earendil-works/pi-ai";
@@ -262,7 +263,13 @@ export default function (pi: ExtensionAPI) {
 		"baseBranch/baseCommit，以及 current-subagent 或 external-agent reviewer 选择；等我一次确认后，再创建独立 Hotfix 文档和隔离分支，" +
 		"连续实施、验证并完成独立只读 AI Review。不要修改普通 Loop 的 activeLoop，也不要替我做最终人工签署。";
 
-	const SDD_USAGE = "用法：/sdd [init|upgrade|review|hotfix]；不带子命令时开始访谈。";
+	const FULL_TEST_MESSAGE =
+		"请加载 sdd-full-test skill，作为证据执行器调度项目的测试插件：" +
+		"探测项目配置的测试插件清单（优先尊重显式传入的清单路径、环境变量 SDD_TEST_PLUGIN 或项目约定，不硬编码项目目录约定），让我选择 profile 或 suites，" +
+		"做 preflight 探活并在 finally 路径执行 teardown 平账清理，最后生成带 manifest.sha256 的不可变 Evidence Bundle，" +
+		"并整理 verification.md 的待审补丁与 extensionClaims。不要替我下通过结论，也不要自动确认门禁。";
+
+	const SDD_USAGE = "用法：/sdd [init|upgrade|review|hotfix|full-test]；不带子命令时开始访谈。";
 
 	pi.registerCommand("sdd", {
 		description: "SDD Loop：访谈，或用 init / upgrade / review 进入初始化、升级和审查",
@@ -270,9 +277,22 @@ export default function (pi: ExtensionAPI) {
 			const raw = String(args ?? "").trim();
 			const parts = raw ? raw.split(/\s+/) : [];
 			if (parts.length === 0) return pi.sendUserMessage(INTERVIEW_MESSAGE);
+			const sub = parts[0];
+			if (sub === "full-test") {
+				const extra = parts.slice(1).join(" ").trim();
+				const msg = extra
+					? `${FULL_TEST_MESSAGE}\n用户指定测试插件清单路径：${extra}`
+					: FULL_TEST_MESSAGE;
+				return pi.sendUserMessage(msg);
+			}
 			if (parts.length !== 1) return pi.sendUserMessage(SDD_USAGE);
-			const messages: Record<string, string> = { init: INIT_MESSAGE, upgrade: UPGRADE_MESSAGE, review: REVIEW_MESSAGE, hotfix: HOTFIX_MESSAGE };
-			return pi.sendUserMessage(messages[parts[0]] ?? SDD_USAGE);
+			const messages: Record<string, string> = {
+				init: INIT_MESSAGE,
+				upgrade: UPGRADE_MESSAGE,
+				review: REVIEW_MESSAGE,
+				hotfix: HOTFIX_MESSAGE,
+			};
+			return pi.sendUserMessage(messages[sub] ?? SDD_USAGE);
 		},
 	});
 
@@ -281,6 +301,17 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args: any, _ctx: any) => {
 			if (String(args ?? "").trim()) return pi.sendUserMessage("用法：/sdd-hotfix（不带参数）。");
 			return pi.sendUserMessage(HOTFIX_MESSAGE);
+		},
+	});
+
+	pi.registerCommand("sdd-full-test", {
+		description: "SDD Full-Test：调度项目测试插件，采集不可变证据包并整理待审事实",
+		handler: async (args: any, _ctx: any) => {
+			const extra = String(args ?? "").trim();
+			const msg = extra
+				? `${FULL_TEST_MESSAGE}\n用户指定测试插件清单路径：${extra}`
+				: FULL_TEST_MESSAGE;
+			return pi.sendUserMessage(msg);
 		},
 	});
 }

@@ -144,7 +144,7 @@ stateDiagram-v2
 
 要求 Node ≥ 20。
 
-**完整安装：五个 Skill + `capabilities` / `check` / `guide` CLI**
+**完整安装：六个 Skill + `capabilities` / `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -161,7 +161,7 @@ npx skills@latest add Roger0808/sdd-loop -g
 
 | 落点 | 安装方式 |
 |---|---|
-| 内置 Skill | [sdd-init](skills/sdd-init)、[sdd-interview](skills/sdd-interview)、[sdd-upgrade](skills/sdd-upgrade)、[sdd-review](skills/sdd-review)、[sdd-hotfix](skills/sdd-hotfix) |
+| 内置 Skill | [sdd-init](skills/sdd-init)、[sdd-interview](skills/sdd-interview)、[sdd-upgrade](skills/sdd-upgrade)、[sdd-review](skills/sdd-review)、[sdd-hotfix](skills/sdd-hotfix)、[sdd-full-test](skills/sdd-full-test) |
 | Claude Code | `~/.claude/skills/` |
 | Agent Skills 宿主 | `~/.agents/skills/` — Codex、Gemini CLI、GitHub Copilot、Cursor、Windsurf、OpenCode、OpenClaw、Kimi Code、Antigravity、Factory Droid、Roo Code |
 | Hermes Agent | 通过其 Skills 配置登记 |
@@ -205,6 +205,7 @@ npx skills@latest update -g
 ```bash
 sdd-loop capabilities --require governance@1 --host agents
 sdd-loop capabilities --require hotfix@1 --host agents
+sdd-loop capabilities --require full-test@1 --host agents
 ```
 
 治理项目开工前先运行。`--host` 取 `claude`、`agents`、`openclaw`、`hermes` 或 `pi`；Codex、Kimi Code 等读取共享 Agent Skills 的宿主使用 `agents`。命令不存在或退出非 0，表示 CLI/规则资源不完整，或当前宿主尚未安装 Skills；项目规则不会自动更新工具。
@@ -215,10 +216,11 @@ sdd-loop capabilities --require hotfix@1 --host agents
 |---|---|
 | `sdd-loop capabilities --require governance@1 --host <宿主>` | Fail closed 检查 CLI、治理资源及当前宿主的 Skill 安装是否支持协议 1 |
 | `sdd-loop capabilities --require hotfix@1 --host <宿主>` | 检查 Hotfix 协议、治理依赖及当前宿主是否发现 `sdd-hotfix` |
+| `sdd-loop capabilities --require full-test@1 --host <宿主>` | 检查 Full-Test 协议资源及当前宿主是否发现 `sdd-full-test` |
 | `sdd-loop check` | 对账状态声明与仓库事实 |
 | `sdd-loop guide --type <doc.clause>` | 查询条款口径和现有编号族 |
 
-### 五个工作流命令
+### 六个工作流命令
 
 ```mermaid
 flowchart TD
@@ -227,6 +229,7 @@ flowchart TD
     A -- 是 --> B{当前要做什么?}
     B -- 启动或继续 Loop 文档 --> N["/sdd · sdd-interview"]
     B -- 更新规则、分流或 AGENTS --> U["/sdd upgrade · sdd-upgrade"]
+    B -- 运行全维度测试并收集证据 --> T["/sdd-full-test 或 /sdd full-test · sdd-full-test"]
     B -- 已验证实现进入收口 --> R["/sdd review · sdd-review"]
     B -- 独立紧急修复 --> H["/sdd-hotfix 或 /sdd hotfix · sdd-hotfix"]
 ```
@@ -236,6 +239,7 @@ flowchart TD
 | `/sdd init` | `sdd-init` / `/sdd-init` | 仓库还没有 SDD Loop 结构 | 创建项目规则和初始状态，不写业务内容 |
 | `/sdd` | `sdd-interview` / `/sdd-interview` | 启动产品或新一轮 Loop | 访谈并产出 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md` |
 | `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | 已初始化仓库需要补新门禁、治理角色、分流或审计 AGENTS | 无损升级现有 SDD 约定，不伪造历史、不静默替换项目规则 |
+| `/sdd full-test`、`/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | 需要运行项目测试套件采集不可变证据包 | 执行测试、收集证据包与 SHA-256 清单，提议 `verification.md` 待审事实与扩展索赔 |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation 和自动化验证已经完成 | 架构对账、记录 change surface、AI 审查并准备人工审查包 |
 | `/sdd hotfix`、`/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | 用户选择不推进普通 Loop 的独立紧急修复 | 一份 Hotfix 文档、独立审计、验证、AI Review 与人工签署 |
 
