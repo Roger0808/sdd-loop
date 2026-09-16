@@ -130,6 +130,18 @@ Read-only launch card (scope + risks + reviewer) → one user confirmation → i
 
 Each Hotfix has one `hotfix-YYYYMMDD-NN.md`. Single-stream repositories use `docs/loops/hotfix/`; split repositories use `docs/loops/<stream>/hotfix/`. Closed Hotfixes move to the corresponding `docs/archive[/<stream>]/hotfix/`. Numbering is per stream and day, scanning both active and archived files. Testing must PASS; the other three extensions must PASS or provide a specific N/A reason. Architecture-impacting fixes must reconcile the long-lived Architecture Baseline.
 
+### Full-Test Evidence Runner
+
+`/sdd-full-test` (pi also accepts `/sdd full-test`) executes project test plugins and collects immutable evidence bundles. It acts strictly as an evidence runner, never deciding verification verdicts, and produces bundles with `manifest.sha256` for human and AI Review.
+
+```text
+Discover plugin manifest (tests/sdd/plugin.yaml or custom path) → validate sdd-full-test/v1
+→ select profile or suites → preflight check & mutual exclusion locks
+→ run suites & perform teardown verification on finally path (unverified cleanup forbids PASS)
+→ build Evidence Bundle with manifest.sha256
+→ propose verification.md facts & many-to-many extensionClaims
+```
+
 ## AGENTS.md handling
 
 - Without an existing AGENTS.md, sdd-init selects the applicable single/split-project rules and writes the final structured file directly.

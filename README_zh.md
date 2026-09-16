@@ -130,6 +130,18 @@ stateDiagram-v2
 
 每个 Hotfix 只有一份 `hotfix-YYYYMMDD-NN.md`。单流放在 `docs/loops/hotfix/`，分流放在 `docs/loops/<stream>/hotfix/`；关闭后迁到对应 `docs/archive[/<stream>]/hotfix/`。编号按每条流、每天同时扫描活跃与归档目录后递增。Testing 必须 PASS，其余三项必须 PASS 或有明确 N/A 理由；架构受影响时必须回写长期 Architecture Baseline。
 
+### Full-Test 证据执行器
+
+`/sdd-full-test`（pi 也支持 `/sdd full-test`）用于调度项目自备的测试插件并采集不可变证据包。它定位于“证据执行器”，不替 Reviewer 下通过结论，而是生成带 `manifest.sha256` 的证据包供人工和 AI Review 核实。
+
+```text
+探测测试清单（tests/sdd/plugin.yaml 或可配置路径） → 校验协议 sdd-full-test/v1
+→ 选择 profile 或 suites → preflight 探活与资源锁排他
+→ 运行测试并在 finally 路径执行平账清理（未平账严禁宣布为 PASS）
+→ 生成 Evidence Bundle 与 manifest.sha256
+→ 提议 verification.md 待审事实与多对多 extensionClaims 索赔
+```
+
 ## AGENTS.md 处理
 
 - 没有 AGENTS.md：sdd-init 按单流/分流和项目事实筛选规则，直接生成结构化最终版本。
