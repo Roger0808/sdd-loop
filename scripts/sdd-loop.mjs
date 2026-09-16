@@ -16,6 +16,7 @@ import { buildRepoCheckReport } from "../src/validation/loop-check.js";
 import { runInit } from "./lib/init.mjs";
 import { runGovernance } from "./lib/governance.mjs";
 import { runCapabilities } from "./lib/capabilities.mjs";
+import { runHotfix } from "./lib/hotfix.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
 import { pickExample } from "../src/spec-guide/example.js";
@@ -121,7 +122,11 @@ function renderReportBody(report) {
     return lines.join("\n");
   }
 
-  lines.push(report.ok ? "结论：干净。" : `结论：有 ${report.problems.length} 处声明与事实不符。`);
+  lines.push(
+    report.severity === "unusable"
+      ? `结论：Hotfix 判据有 ${report.problems.length} 处不可安全判定或不一致。`
+      : report.ok ? "结论：干净。" : `结论：有 ${report.problems.length} 处声明与事实不符。`,
+  );
   lines.push("");
 
   for (const entry of report.checks) {
@@ -291,7 +296,7 @@ function runCheck(args) {
     const report = repo.streams[0].report;
     if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     else process.stdout.write(`${renderText(report)}\n`);
-    if (!report.readable) process.exit(EXIT_UNUSABLE);
+    if (!report.readable || report.severity === "unusable") process.exit(EXIT_UNUSABLE);
     process.exit(report.ok ? EXIT_OK : EXIT_CONTENT);
   }
 
@@ -329,6 +334,13 @@ function main() {
   }
   if (command === "_governance") {
     return runGovernance(args, {
+      stdout: (s) => process.stdout.write(s),
+      stderr: (s) => process.stderr.write(s),
+      exit: (code) => process.exit(code),
+    });
+  }
+  if (command === "_hotfix") {
+    return runHotfix(args, {
       stdout: (s) => process.stdout.write(s),
       stderr: (s) => process.stderr.write(s),
       exit: (code) => process.exit(code),

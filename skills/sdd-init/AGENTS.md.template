@@ -108,6 +108,17 @@ Requirements
 - `testing,pbt,security,resiliency` 四个工程扩展默认启用。各阶段按需读取 `sdd-init` skill 的 `references/extensions/`；Verification 必须逐项写 `PASS`、`FAIL` 或有具体理由的 `N/A`，空白和“已检查”都不算证据。
 - 项目自定义扩展放在 `docs/sdd/extensions/<domain>/<name>.md`；存在同名 `.opt-in.md` 时只在 Requirements 提问决定是否启用，没有 opt-in 时始终启用。完整规则只在相关阶段加载；重名时停止，不静默覆盖。
 
+## Hotfix 独立通道
+
+- Hotfix 只能加载 `sdd-hotfix` skill 启动；开工前除 `governance@1` 外还必须运行 `sdd-loop capabilities --require hotfix@1 --host <当前宿主>`。能力缺失时停止并提示更新，不得自动安装本机 Skill。
+- Hotfix 与普通 Loop 并行，不修改 `activeLoop`、`nextLoop`、`gateStage` 或 `gateState`，也不是跳过普通 Loop 阶段的开关。用户决定是否采用 Hotfix；风险必须展示和留痕，但不按类别或 diff 大小自动拒绝。
+- 首次响应只读勘察并展示问题/目标、修改范围、API/数据/权限/依赖/部署风险、基线和 reviewer 路径；用户一次确认后，才创建独立分支或 worktree 和一份 Hotfix 文档。
+- Hotfix 审计位于文档相邻的 `audit/hotfix-YYYYMMDD-NN/*.jsonl`。编号按每条流、每天扫描活跃与归档目录后递增，不得重号。
+- 单流 Hotfix 放在 `docs/loops/hotfix/hotfix-YYYYMMDD-NN.md`，归档到 `docs/archive/hotfix/`。<!-- 分流：删掉这一条 -->
+- 分流 Hotfix 放在 `docs/loops/<流名>/hotfix/hotfix-YYYYMMDD-NN.md`，归档到 `docs/archive/<流名>/hotfix/`。<!-- 单流：删掉这一条 -->
+- Testing 必须 PASS；PBT、Security、Resiliency 必须 PASS 或有具体理由的 N/A。`architectureImpact: updated` 时必须回写 Architecture Baseline 并记录 `architecture_reconciled`。
+- 启动时选择的只读 AI reviewer 路径不得中途静默更换。只有 `READY_FOR_HUMAN_REVIEW` 后，用户才能对当前修复指纹签署；随后把文档和对应审计目录移入对应的归档 Hotfix 目录并记录 `hotfix_closed`。
+
 **Loop 编号是流内编号，跨流重号是正常的。**`maker/loop-1` 和 `admin-console/loop-1` 是两个不同的 Loop，裸写「Loop 1」从此有歧义——引用一律带流名，写成 `admin-console/loop-2`。这条只管 **Loop 编号**：条款编号（REQ-001、BND-002 之类）不受影响，它们永远在同一条流的文档族内部互相引用，不存在跨流引用，给每个编号都套上流名是纯噪音。<!-- 单流：删掉这一段 -->
 
 ## 流的划分与跨流改动

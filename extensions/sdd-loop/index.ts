@@ -14,6 +14,7 @@
  *   /sdd init  加载 sdd-init skill（建**约定**：AGENTS.md / CLAUDE.md / status.md，每仓一次）
  *   /sdd upgrade 加载 sdd-upgrade skill（升级条款、分流形态或 AGENTS 审计）
  *   /sdd review  加载 sdd-review skill（架构回写 + AI/人工审查收口）
+ *   /sdd hotfix 与 /sdd-hotfix 加载 sdd-hotfix skill（独立单文档修复通道）
  */
 
 import { Type } from "@earendil-works/pi-ai";
@@ -67,7 +68,12 @@ function renderCheckBody(report: any): string {
 		return lines.join("\n");
 	}
 
-	lines.push(report.ok ? "结论：干净——状态声明与文件事实一致。" : `结论：有 ${report.problems.length} 处声明与事实不符。`, "");
+	lines.push(
+		report.severity === "unusable"
+			? `结论：Hotfix 判据有 ${report.problems.length} 处不可安全判定或不一致。`
+			: report.ok ? "结论：干净——状态声明与文件事实一致。" : `结论：有 ${report.problems.length} 处声明与事实不符。`,
+		"",
+	);
 	for (const entry of report.checks) {
 		if (entry.id === "C4") continue;
 		lines.push(`${entry.id} ${STATUS_MARK[String(entry.ok)]} ${entry.title}`);
@@ -251,7 +257,12 @@ export default function (pi: ExtensionAPI) {
 		"根据最终代码反向更新 Architecture Baseline 和 change surface，再组织独立只读 AI Review，" +
 		"并把自动化验证、架构对账、AI 审查和人工审查包写入 verification.md。不要替我做人工确认。";
 
-	const SDD_USAGE = "用法：/sdd [init|upgrade|review]；不带子命令时开始访谈。";
+	const HOTFIX_MESSAGE =
+		"请加载 sdd-hotfix skill。首次响应只做只读勘察，展示问题与目标、修改范围、API/数据/权限/依赖/部署风险、" +
+		"baseBranch/baseCommit，以及 current-subagent 或 external-agent reviewer 选择；等我一次确认后，再创建独立 Hotfix 文档和隔离分支，" +
+		"连续实施、验证并完成独立只读 AI Review。不要修改普通 Loop 的 activeLoop，也不要替我做最终人工签署。";
+
+	const SDD_USAGE = "用法：/sdd [init|upgrade|review|hotfix]；不带子命令时开始访谈。";
 
 	pi.registerCommand("sdd", {
 		description: "SDD Loop：访谈，或用 init / upgrade / review 进入初始化、升级和审查",
@@ -260,8 +271,16 @@ export default function (pi: ExtensionAPI) {
 			const parts = raw ? raw.split(/\s+/) : [];
 			if (parts.length === 0) return pi.sendUserMessage(INTERVIEW_MESSAGE);
 			if (parts.length !== 1) return pi.sendUserMessage(SDD_USAGE);
-			const messages: Record<string, string> = { init: INIT_MESSAGE, upgrade: UPGRADE_MESSAGE, review: REVIEW_MESSAGE };
+			const messages: Record<string, string> = { init: INIT_MESSAGE, upgrade: UPGRADE_MESSAGE, review: REVIEW_MESSAGE, hotfix: HOTFIX_MESSAGE };
 			return pi.sendUserMessage(messages[parts[0]] ?? SDD_USAGE);
+		},
+	});
+
+	pi.registerCommand("sdd-hotfix", {
+		description: "SDD Hotfix：一次启动确认后走独立单文档修复、验证与审查",
+		handler: async (args: any, _ctx: any) => {
+			if (String(args ?? "").trim()) return pi.sendUserMessage("用法：/sdd-hotfix（不带参数）。");
+			return pi.sendUserMessage(HOTFIX_MESSAGE);
 		},
 	});
 }

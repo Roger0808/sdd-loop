@@ -139,12 +139,13 @@ test("README 里的 sdd-loop 命令都是真实子命令", () => {
   }
 });
 
-test("README 写清四个工作流命令及对应 Skill", () => {
+test("README 写清五个工作流命令及对应 Skill", () => {
   const routes = [
     ["/sdd init", "sdd-init"],
     ["/sdd", "sdd-interview"],
     ["/sdd upgrade", "sdd-upgrade"],
     ["/sdd review", "sdd-review"],
+    ["/sdd-hotfix", "sdd-hotfix"],
   ];
   for (const { file, text } of READMES) {
     for (const [route, skill] of routes) {
@@ -208,7 +209,7 @@ test("README 承诺的本地文件都存在（安装步骤与链接不许断）"
       assert.ok(fs.existsSync(path.join(REPO_ROOT, clean)), `${file} 链接到 ${clean}，但文件不存在`);
     }
     // 安装步骤软链的每个 skill 目录必须真的在包里。
-    for (const d of ["skills/sdd-init", "skills/sdd-interview", "skills/sdd-upgrade", "skills/sdd-review"]) {
+    for (const d of ["skills/sdd-init", "skills/sdd-interview", "skills/sdd-upgrade", "skills/sdd-review", "skills/sdd-hotfix"]) {
       assert.ok(
         text.includes(d) && fs.existsSync(path.join(REPO_ROOT, d)),
         `${file} 的安装步骤引用了 ${d}，它必须真实存在`,
@@ -230,6 +231,8 @@ test("双语 README 同步覆盖核心生命周期、安装路由与 AGENTS 分�
     "--openclaw",
     "/sdd upgrade",
     "/sdd review",
+    "/sdd-hotfix",
+    "hotfix@1",
     "KEEP_SDD_CANONICAL",
     "NOT_TESTABLE_SAFELY",
     "OPENCLAW_STATE_DIR",

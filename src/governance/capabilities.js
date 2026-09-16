@@ -19,7 +19,18 @@ const GOVERNANCE_RESOURCES = Object.freeze([
   ...BUILTIN_EXTENSIONS.map((name) => `skills/sdd-init/references/extensions/${name}.md`),
 ]);
 
-function summarizeHostReadiness(packageRoot, { host, home, env }) {
+const HOTFIX_RESOURCES = Object.freeze([
+  "scripts/lib/governance.mjs",
+  "scripts/lib/hotfix.mjs",
+  "src/hotfix/layout.js",
+  "src/validation/hotfix-check.js",
+  "skills/sdd-hotfix/SKILL.md",
+]);
+
+const GOVERNANCE_SKILLS = Object.freeze(["sdd-init", "sdd-interview", "sdd-upgrade", "sdd-review"]);
+const HOTFIX_SKILLS = Object.freeze(["sdd-hotfix"]);
+
+function summarizeHostReadiness(packageRoot, { host, home, env, requiredSkills }) {
   if (!host) return null;
   if (!HOST_IDS.includes(host)) {
     return {
@@ -38,7 +49,7 @@ function summarizeHostReadiness(packageRoot, { host, home, env }) {
 
   const pending = [];
   const conflicts = [];
-  for (const item of target.items ?? []) {
+  for (const item of (target.items ?? []).filter((entry) => requiredSkills.includes(entry.name))) {
     if (item.state === ITEM_STATES.ITEM_READY) pending.push(item.name);
     if (item.state === ITEM_STATES.ITEM_OCCUPIED) conflicts.push(item.name);
   }
@@ -69,7 +80,7 @@ function summarizeHostReadiness(packageRoot, { host, home, env }) {
       conflicts,
     };
   }
-  return { id: host, ready: true, reason: `${host} 宿主已安装全部治理 Skills。`, pending, conflicts };
+  return { id: host, ready: true, reason: `${host} 宿主已安装该能力所需 Skills。`, pending, conflicts };
 }
 
 export function buildCapabilityReport(packageRoot, options = {}) {
@@ -82,6 +93,13 @@ export function buildCapabilityReport(packageRoot, options = {}) {
     }
   });
   const protocolVersion = Number(GOVERNANCE_VERSION);
+  const missingHotfixResources = HOTFIX_RESOURCES.filter((rel) => {
+    try {
+      return !fs.statSync(path.join(root, rel)).isFile();
+    } catch {
+      return true;
+    }
+  });
   const report = {
     schemaVersion: CAPABILITY_SCHEMA_VERSION,
     package: "sdd-loop",
@@ -93,14 +111,26 @@ export function buildCapabilityReport(packageRoot, options = {}) {
         engineeringExtensions: [...BUILTIN_EXTENSIONS],
         missingResources,
       },
+      hotfix: {
+        available: missingHotfixResources.length === 0 && missingResources.length === 0,
+        supportedProtocolVersions: [1],
+        checks: ["H1", "H2", "H3", "H4", "H5"],
+        engineeringExtensions: [...BUILTIN_EXTENSIONS],
+        missingResources: [...missingResources, ...missingHotfixResources].filter((value, index, all) => all.indexOf(value) === index),
+      },
     },
   };
-  const hostReadiness = summarizeHostReadiness(root, {
+  const readinessOptions = {
     host: options.host,
     home: options.home ?? process.env.HOME,
     env: options.env ?? process.env,
-  });
-  if (hostReadiness) report.hostReadiness = hostReadiness;
+  };
+  const hostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: GOVERNANCE_SKILLS });
+  const hotfixHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: HOTFIX_SKILLS });
+  if (hostReadiness) {
+    report.hostReadiness = hostReadiness;
+    report.hostReadinessByCapability = { governance: hostReadiness, hotfix: hotfixHostReadiness };
+  }
   return report;
 }
 
@@ -129,7 +159,8 @@ export function evaluateCapabilityRequirement(report, requirement) {
       reason: `${name}@${version} 不受支持；可用协议：${capability.supportedProtocolVersions.join(" / ") || "无"}。`,
     };
   }
-  if (!report.hostReadiness) {
+  const hostReadiness = report.hostReadinessByCapability?.[name] ?? report.hostReadiness;
+  if (!hostReadiness) {
     return {
       ok: false,
       name,
@@ -137,12 +168,12 @@ export function evaluateCapabilityRequirement(report, requirement) {
       reason: `缺少 --host；可用值：${HOST_IDS.join(" / ")}。能力门禁必须同时验证当前宿主能发现治理 Skills。`,
     };
   }
-  if (!report.hostReadiness.ready) {
+  if (!hostReadiness.ready) {
     return {
       ok: false,
       name,
       version,
-      reason: `${name}@${version} 的包资源可用，但 ${report.hostReadiness.id} 宿主未就绪：${report.hostReadiness.reason}`,
+      reason: `${name}@${version} 的包资源可用，但 ${hostReadiness.id} 宿主未就绪：${hostReadiness.reason}`,
     };
   }
   return { ok: true, name, version, reason: `${name}@${version} 可用。` };

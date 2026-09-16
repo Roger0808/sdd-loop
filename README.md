@@ -118,6 +118,18 @@ Without a PBT library use: `existing library → existing test framework + deter
 - `verification.md` contains `Automated Verification`, `Architecture Reconciliation & Change Surface`, `AI Code Review` and `Human Review Packet`.
 - Any code or critical-document change invalidates the old review. A Loop closes only after a human records approver, time, reviewed version and fingerprint.
 
+### Independent Hotfix channel
+
+`/sdd-hotfix` (pi also accepts `/sdd hotfix`) is for a user-selected urgent fix. It runs beside the ordinary Loop, never changes `activeLoop`, and is not a switch for skipping ordinary Loop stages.
+
+```text
+Read-only launch card (scope + risks + reviewer) → one user confirmation → isolated implementation
+→ Testing/PBT/Security/Resiliency → independent read-only AI Review
+→ human signs the current fingerprint → archive document and audit together
+```
+
+Each Hotfix has one `hotfix-YYYYMMDD-NN.md`. Single-stream repositories use `docs/loops/hotfix/`; split repositories use `docs/loops/<stream>/hotfix/`. Closed Hotfixes move to the corresponding `docs/archive[/<stream>]/hotfix/`. Numbering is per stream and day, scanning both active and archived files. Testing must PASS; the other three extensions must PASS or provide a specific N/A reason. Architecture-impacting fixes must reconcile the long-lived Architecture Baseline.
+
 ## AGENTS.md handling
 
 - Without an existing AGENTS.md, sdd-init selects the applicable single/split-project rules and writes the final structured file directly.
@@ -132,7 +144,7 @@ Audit verdicts: `RECOMMEND_ADOPTION`, `NEEDS_REVISION`, `KEEP_CURRENT`, `NOT_TES
 
 Requires Node ≥ 20.
 
-**Full: four Skills + `capabilities` / `check` / `guide` CLI**
+**Full: five Skills + `capabilities` / `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -149,7 +161,7 @@ npx skills@latest add Roger0808/sdd-loop -g
 
 | Target | Installation |
 |---|---|
-| Packaged Skills | [sdd-init](skills/sdd-init), [sdd-interview](skills/sdd-interview), [sdd-upgrade](skills/sdd-upgrade), [sdd-review](skills/sdd-review) |
+| Packaged Skills | [sdd-init](skills/sdd-init), [sdd-interview](skills/sdd-interview), [sdd-upgrade](skills/sdd-upgrade), [sdd-review](skills/sdd-review), [sdd-hotfix](skills/sdd-hotfix) |
 | Claude Code | `~/.claude/skills/` |
 | Agent Skills hosts | `~/.agents/skills/` — Codex, Gemini CLI, GitHub Copilot, Cursor, Windsurf, OpenCode, OpenClaw, Kimi Code, Antigravity, Factory Droid, Roo Code |
 | Hermes Agent | registered through its skills configuration |
@@ -192,6 +204,7 @@ Restart the host or open a new session after installation.
 
 ```bash
 sdd-loop capabilities --require governance@1 --host agents
+sdd-loop capabilities --require hotfix@1 --host agents
 ```
 
 Run this before working in a governance-enabled repository. Set `--host` to `claude`, `agents`, `openclaw`, `hermes`, or `pi`; Codex, Kimi Code, and other shared Agent Skills hosts use `agents`. A missing command or non-zero exit means the CLI/rule resources are incomplete or Skills are not installed for that host. Project rules never auto-update tools.
@@ -201,10 +214,11 @@ Run this before working in a governance-enabled repository. Set `--host` to `cla
 | CLI | Purpose |
 |---|---|
 | `sdd-loop capabilities --require governance@1 --host <host>` | Fail-closed check that the CLI, governance resources and host Skill installation support protocol 1 |
+| `sdd-loop capabilities --require hotfix@1 --host <host>` | Check the Hotfix protocol, governance dependency and host discovery of `sdd-hotfix` |
 | `sdd-loop check` | Reconcile status declarations with repository facts |
 | `sdd-loop guide --type <doc.clause>` | Show clause guidance and existing ID families |
 
-### Four workflow commands
+### Five workflow commands
 
 ```mermaid
 flowchart TD
@@ -214,6 +228,7 @@ flowchart TD
     B -- Start or continue Loop documents --> N["/sdd · sdd-interview"]
     B -- Update rules, streams or AGENTS --> U["/sdd upgrade · sdd-upgrade"]
     B -- Close verified implementation --> R["/sdd review · sdd-review"]
+    B -- Independent urgent fix --> H["/sdd-hotfix or /sdd hotfix · sdd-hotfix"]
 ```
 
 | pi command | Skill name / slash alias | Use it when | Result |
@@ -222,6 +237,7 @@ flowchart TD
 | `/sdd` | `sdd-interview` / `/sdd-interview` | Starting a product or a new Loop | Interviews and produces `requirements.md`, `architecture.md`, `specification.md` and `tasks.md` |
 | `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | An initialized repository needs current gates, governance roles, split-stream migration or AGENTS audit | Upgrades existing SDD conventions without inventing history or silently replacing project rules |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation and automated verification are complete | Reconciles architecture, records change surface, runs AI review and prepares human review |
+| `/sdd hotfix`, `/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | The user chooses an urgent fix that must not advance the ordinary Loop | One Hotfix document, isolated audit, verification, AI Review and human sign-off |
 
 pi uses the first column; other hosts invoke the Skill name or slash alias.
 
@@ -240,7 +256,7 @@ sdd-loop check --json
 | `1` | declarations contradict repository facts |
 | `2` | evidence is unreadable; no verdict |
 
-Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. Legacy repositories retain their existing results and exit codes.
+Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. When Hotfix files exist, H1–H5 are appended; without Hotfix files, existing text, JSON, pi details and exit codes stay unchanged.
 
 ### Clause guide
 
@@ -263,6 +279,9 @@ your-project/
     ├── loops/
     │   └── [<stream>/]
     │       ├── status.md
+    │       ├── hotfix/
+    │       │   ├── hotfix-YYYYMMDD-NN.md
+    │       │   └── audit/hotfix-YYYYMMDD-NN/<writer-id>.jsonl
     │       └── loop-N/
     │           ├── audit/
     │           │   └── <writer-id>.jsonl
@@ -274,6 +293,7 @@ your-project/
     │           └── verification.md
     ├── sdd/extensions/        # optional project extensions; *.opt-in.md controls enablement
     └── archive/
+        └── [<stream>/]hotfix/  # closed Hotfix document and audit/
 ```
 
 `sdd-loop check` discovers single-stream and split-stream layouts automatically. Custom paths use `--status-file` and `--archive-dir`.

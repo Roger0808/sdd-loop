@@ -20,6 +20,7 @@ import { scanLoopRepo, discoverStreams } from "../loop/repo-scan.js";
 import { isBlank } from "../loop/front-matter.js";
 import { conventionForStream } from "../loop/convention.js";
 import { buildGovernanceChecks } from "./governance-check.js";
+import { buildHotfixChecks } from "./hotfix-check.js";
 
 const SEVERITY = Object.freeze({ unusable: "unusable", problem: "problem", advisory: "advisory" });
 
@@ -175,21 +176,29 @@ export function buildLoopCheckReport(repoRoot, overrides = {}) {
   }
 
   const governanceChecks = buildGovernanceChecks(scan);
-  const checks = [c1, c2, c3, c4, c5, ...governanceChecks];
-  const problems = [...c2.findings, ...c3.findings, ...governanceChecks.flatMap((entry) => entry.findings)];
+  const hotfix = buildHotfixChecks(scan);
+  const checks = [c1, c2, c3, c4, c5, ...governanceChecks, ...hotfix.checks];
+  const problems = [
+    ...c2.findings,
+    ...c3.findings,
+    ...governanceChecks.flatMap((entry) => entry.findings),
+    ...hotfix.checks.flatMap((entry) => entry.findings),
+  ];
   const advisories = [...c5.findings];
-
-  return {
+  const report = {
     repoRoot: scan.repoRoot,
     statusPath: status.path,
     readable: true,
     ok: problems.length === 0,
-    severity: problems.length ? SEVERITY.problem : null,
+    severity: hotfix.unusable ? SEVERITY.unusable : problems.length ? SEVERITY.problem : null,
     checks,
     problems,
     advisories,
     nextStep,
   };
+  // 没有 Hotfix 时不增加空字段，保证旧 CLI JSON/details 的字节级形状不变。
+  if (hotfix.checks.length) report.hotfixes = hotfix.files.map(({ body, ...file }) => file);
+  return report;
 }
 
 /**
@@ -200,8 +209,10 @@ function aggregate(mode, entries) {
   // 一条流读不出来**不能吃掉另一条流的结论**：readable 问的是「有没有流给出了结论」，
   // 不是「是不是所有流都可读」。顺手写成后者，会让一条流的合并冲突瘫痪整个仓库的门禁。
   const readable = entries.filter((e) => e.report.readable);
-  const unreadable = entries.filter((e) => !e.report.readable);
-  const problemCount = readable.reduce((n, e) => n + e.report.problems.length, 0);
+  const unreadable = entries.filter((e) => !e.report.readable || e.report.severity === SEVERITY.unusable);
+  const problemCount = entries
+    .filter((e) => e.report.readable)
+    .reduce((n, e) => n + e.report.problems.length, 0);
   return {
     repoRoot: entries[0].report.repoRoot,
     mode,

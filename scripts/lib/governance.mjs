@@ -9,7 +9,7 @@ import { EXIT_OK, EXIT_UNUSABLE } from "./exit-codes.mjs";
  */
 export function runGovernance(args, io) {
   if (args._[1] !== "record" || !args["event-json"]) {
-    io.stderr("内部用法：sdd-loop _governance record --event-json <tmp-file> [--repo <dir>] [--stream <name>] [--status-file <path>] [--archive-dir <path>]\n");
+    io.stderr("内部用法：sdd-loop _governance record --event-json <tmp-file> [--hotfix <HF-YYYYMMDD-NN>] [--repo <dir>] [--stream <name>] [--status-file <path>] [--archive-dir <path>]\n");
     io.exit(EXIT_UNUSABLE);
     return;
   }
@@ -20,6 +20,7 @@ export function runGovernance(args, io) {
     const result = recordGovernanceEvent({
       repoRoot: path.resolve(args.repo || process.cwd()),
       stream: args.stream || null,
+      hotfix: args.hotfix || null,
       eventFile: args["event-json"],
       overrides,
     });

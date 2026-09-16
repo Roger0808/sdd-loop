@@ -118,6 +118,18 @@ stateDiagram-v2
 - `verification.md` 固定包含 `Automated Verification`、`Architecture Reconciliation & Change Surface`、`AI Code Review` 和 `Human Review Packet`。
 - 代码或关键文档变化会使旧审查失效。只有人工记录确认人、时间、审查版本和指纹后才能关闭 Loop。
 
+### Hotfix 独立通道
+
+`/sdd-hotfix`（pi 也支持 `/sdd hotfix`）用于用户明确选择的紧急修复。它与普通 Loop 并行，不修改 `activeLoop`，也不把 Hotfix 当作普通 Loop 的跳阶段开关。
+
+```text
+只读启动卡（范围 + 风险 + reviewer） → 用户一次确认 → 隔离实施
+→ Testing/PBT/Security/Resiliency → 独立只读 AI Review
+→ 人工签署当前指纹 → 文档与审计一起归档
+```
+
+每个 Hotfix 只有一份 `hotfix-YYYYMMDD-NN.md`。单流放在 `docs/loops/hotfix/`，分流放在 `docs/loops/<stream>/hotfix/`；关闭后迁到对应 `docs/archive[/<stream>]/hotfix/`。编号按每条流、每天同时扫描活跃与归档目录后递增。Testing 必须 PASS，其余三项必须 PASS 或有明确 N/A 理由；架构受影响时必须回写长期 Architecture Baseline。
+
 ## AGENTS.md 处理
 
 - 没有 AGENTS.md：sdd-init 按单流/分流和项目事实筛选规则，直接生成结构化最终版本。
@@ -132,7 +144,7 @@ stateDiagram-v2
 
 要求 Node ≥ 20。
 
-**完整安装：四个 Skill + `capabilities` / `check` / `guide` CLI**
+**完整安装：五个 Skill + `capabilities` / `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -149,7 +161,7 @@ npx skills@latest add Roger0808/sdd-loop -g
 
 | 落点 | 安装方式 |
 |---|---|
-| 内置 Skill | [sdd-init](skills/sdd-init)、[sdd-interview](skills/sdd-interview)、[sdd-upgrade](skills/sdd-upgrade)、[sdd-review](skills/sdd-review) |
+| 内置 Skill | [sdd-init](skills/sdd-init)、[sdd-interview](skills/sdd-interview)、[sdd-upgrade](skills/sdd-upgrade)、[sdd-review](skills/sdd-review)、[sdd-hotfix](skills/sdd-hotfix) |
 | Claude Code | `~/.claude/skills/` |
 | Agent Skills 宿主 | `~/.agents/skills/` — Codex、Gemini CLI、GitHub Copilot、Cursor、Windsurf、OpenCode、OpenClaw、Kimi Code、Antigravity、Factory Droid、Roo Code |
 | Hermes Agent | 通过其 Skills 配置登记 |
@@ -192,6 +204,7 @@ npx skills@latest update -g
 
 ```bash
 sdd-loop capabilities --require governance@1 --host agents
+sdd-loop capabilities --require hotfix@1 --host agents
 ```
 
 治理项目开工前先运行。`--host` 取 `claude`、`agents`、`openclaw`、`hermes` 或 `pi`；Codex、Kimi Code 等读取共享 Agent Skills 的宿主使用 `agents`。命令不存在或退出非 0，表示 CLI/规则资源不完整，或当前宿主尚未安装 Skills；项目规则不会自动更新工具。
@@ -201,10 +214,11 @@ sdd-loop capabilities --require governance@1 --host agents
 | CLI | 用途 |
 |---|---|
 | `sdd-loop capabilities --require governance@1 --host <宿主>` | Fail closed 检查 CLI、治理资源及当前宿主的 Skill 安装是否支持协议 1 |
+| `sdd-loop capabilities --require hotfix@1 --host <宿主>` | 检查 Hotfix 协议、治理依赖及当前宿主是否发现 `sdd-hotfix` |
 | `sdd-loop check` | 对账状态声明与仓库事实 |
 | `sdd-loop guide --type <doc.clause>` | 查询条款口径和现有编号族 |
 
-### 四个工作流命令
+### 五个工作流命令
 
 ```mermaid
 flowchart TD
@@ -214,6 +228,7 @@ flowchart TD
     B -- 启动或继续 Loop 文档 --> N["/sdd · sdd-interview"]
     B -- 更新规则、分流或 AGENTS --> U["/sdd upgrade · sdd-upgrade"]
     B -- 已验证实现进入收口 --> R["/sdd review · sdd-review"]
+    B -- 独立紧急修复 --> H["/sdd-hotfix 或 /sdd hotfix · sdd-hotfix"]
 ```
 
 | pi 命令 | Skill 名称 / 斜杠别名 | 什么时候用 | 产出 |
@@ -222,6 +237,7 @@ flowchart TD
 | `/sdd` | `sdd-interview` / `/sdd-interview` | 启动产品或新一轮 Loop | 访谈并产出 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md` |
 | `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | 已初始化仓库需要补新门禁、治理角色、分流或审计 AGENTS | 无损升级现有 SDD 约定，不伪造历史、不静默替换项目规则 |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation 和自动化验证已经完成 | 架构对账、记录 change surface、AI 审查并准备人工审查包 |
+| `/sdd hotfix`、`/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | 用户选择不推进普通 Loop 的独立紧急修复 | 一份 Hotfix 文档、独立审计、验证、AI Review 与人工签署 |
 
 pi 使用第一列；其他宿主调用 Skill 名称或斜杠别名。
 
@@ -240,7 +256,7 @@ sdd-loop check --json
 | `1` | 声明与仓库事实矛盾 |
 | `2` | 判据不可读，不给结论 |
 
-启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁；旧项目仍保持原有检查结果与退出码。
+启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁。发现 Hotfix 文件时追加 H1–H5 检查；没有 Hotfix 文件时，现有文本、JSON、pi details 和退出码保持不变。
 
 ### 条款口径
 
@@ -263,6 +279,9 @@ your-project/
     ├── loops/
     │   └── [<stream>/]
     │       ├── status.md
+    │       ├── hotfix/
+    │       │   ├── hotfix-YYYYMMDD-NN.md
+    │       │   └── audit/hotfix-YYYYMMDD-NN/<writer-id>.jsonl
     │       └── loop-N/
     │           ├── audit/
     │           │   └── <writer-id>.jsonl
@@ -274,6 +293,7 @@ your-project/
     │           └── verification.md
     ├── sdd/extensions/        # 可选项目扩展；*.opt-in.md 控制启用
     └── archive/
+        └── [<stream>/]hotfix/  # 关闭后的 Hotfix 文档与 audit/
 ```
 
 `sdd-loop check` 自动发现单流或分流结构；自定义路径使用 `--status-file` 和 `--archive-dir`。

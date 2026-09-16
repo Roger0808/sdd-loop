@@ -68,6 +68,19 @@ test("扩展面：恰好两个工具 + /sdd 命令（12 工具 → 2 工具）",
   const { tools, commands } = await loadExtension();
   assert.deepEqual([...tools.keys()].sort(), ["sdd_loop_check", "sdd_spec_guide"]);
   assert.ok(commands.has("sdd"), "/sdd 命令没注册");
+  assert.ok(commands.has("sdd-hotfix"), "/sdd-hotfix 命令没注册");
+});
+
+test("/sdd hotfix 与 /sdd-hotfix 都加载 sdd-hotfix，且先只读确认", { skip }, async () => {
+  const { commands, sent } = await loadExtension();
+  await commands.get("sdd").handler("hotfix", {});
+  await commands.get("sdd-hotfix").handler("", {});
+  assert.equal(sent.length, 2);
+  for (const message of sent) {
+    assert.match(message, /sdd-hotfix skill/);
+    assert.match(message, /首次响应只做只读勘察/);
+    assert.match(message, /等我一次确认/);
+  }
 });
 
 // ---------------------------------------------------------------- sdd_loop_check

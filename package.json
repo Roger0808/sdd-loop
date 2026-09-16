@@ -24,7 +24,8 @@
       "./skills/sdd-init",
       "./skills/sdd-interview",
       "./skills/sdd-upgrade",
-      "./skills/sdd-review"
+      "./skills/sdd-review",
+      "./skills/sdd-hotfix"
     ]
   },
   "dependencies": {

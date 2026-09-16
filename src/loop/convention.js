@@ -18,6 +18,10 @@ export const DEFAULT_CONVENTION = Object.freeze({
   /** Loop 目录名前缀：活跃目录 = `<prefix><n>`，归档目录 = `<prefix><n>` 或 `<prefix><n>-<后缀>`。 */
   loopDirPrefix: "loop-",
 
+  /** Hotfix 独立通道。活跃根相对 statusFile 所在目录，归档根相对 archiveDir。 */
+  hotfixDirName: "hotfix",
+  hotfixFilePrefix: "hotfix-",
+
   /**
    * 阶段文档的文件名（不含 .md）。
    *

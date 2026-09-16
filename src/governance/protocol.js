@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { readFrontMatter, isBlank } from "../loop/front-matter.js";
 import { resolveConvention, conventionForStream } from "../loop/convention.js";
 import { discoverStreams } from "../loop/repo-scan.js";
+import { hotfixAuditDir, normalizeHotfixId, scanHotfixes } from "../hotfix/layout.js";
 
 export const GOVERNANCE_VERSION = "1";
 export const GOVERNANCE_STATES = Object.freeze([
@@ -59,6 +60,8 @@ const EVENT_ROLES = Object.freeze({
   review_completed: ["reviewer"],
   human_signed: ["approver"],
   loop_closed: ["approver"],
+  hotfix_authorized: ["requester", "product"],
+  hotfix_closed: ["approver"],
 });
 
 function sha256(value) {
@@ -206,6 +209,53 @@ function resolveTarget(repoRoot, stream, overrides = {}, { allowClosed = false }
   };
 }
 
+function resolveHotfixTarget(repoRoot, stream, hotfix, overrides = {}) {
+  const root = path.resolve(repoRoot);
+  const found = discoverStreams(root, overrides);
+  if (found.mode === "streams" && !stream) throw new Error(`这是分流仓库，请用 --stream 指明一条流：${found.streams.join(" / ")}`);
+  if (stream && !found.streams.includes(stream)) throw new Error(`没有名为 ${stream} 的流；可用流：${found.streams.join(" / ") || "(无)"}`);
+  if (found.mode === "single" && stream) throw new Error("这是单流仓库，不能使用 --stream。");
+  const convention = stream ? conventionForStream(stream, overrides) : resolveConvention(overrides);
+  const statusPath = path.join(root, convention.statusFile);
+  const statusText = readFile(statusPath);
+  const status = statusText === null ? null : readFrontMatter(statusText);
+  if (!status?.ok) throw new Error(`状态文件读不出来或 front-matter 不可信：${convention.statusFile}`);
+  if (String(status.meta.governanceVersion ?? "") !== GOVERNANCE_VERSION) throw new Error(`状态文件没有启用 governanceVersion: ${GOVERNANCE_VERSION}`);
+  const identity = normalizeHotfixId(hotfix);
+  if (!identity) throw new Error(`Hotfix ID 不合法：${hotfix}`);
+  const matches = scanHotfixes(root, convention).files.filter((file) => file.meta.hotfixId === identity.id || file.name === `${identity.stem}.md`);
+  if (matches.length !== 1) throw new Error(`无法唯一定位 ${identity.id}：${matches.map((file) => file.path).join(" / ") || "没有候选"}`);
+  const [file] = matches;
+  if (!file.ok) throw new Error(`Hotfix 文件 front-matter 不可信：${file.path}`);
+  const abs = path.join(root, file.path);
+  const text = readFile(abs);
+  return {
+    kind: "hotfix",
+    root,
+    stream: stream || null,
+    convention,
+    statusPath: abs,
+    statusRel: file.path,
+    statusText: text,
+    meta: { ...status.meta, ...file.meta },
+    roleMeta: status.meta,
+    hotfix: identity.id,
+    hotfixLocation: file.location,
+    loop: null,
+    loopDirRel: path.dirname(file.path),
+    loopDir: path.dirname(abs),
+    auditDirRel: hotfixAuditDir(file),
+    auditDir: path.join(root, hotfixAuditDir(file)),
+    currentBranch: git(root, ["branch", "--show-current"]) || "DETACHED",
+  };
+}
+
+function sameBranch(left, right) {
+  const a = String(left ?? "").replace(/^refs\/heads\//, "");
+  const b = String(right ?? "").replace(/^refs\/(?:heads|remotes)\//, "").replace(/^origin\//, "");
+  return a === b || a === b.split("/").at(-1);
+}
+
 function roleEmails(meta, role) {
   return splitList(meta[ROLE_FIELDS[role]]).map((email) => email.toLowerCase());
 }
@@ -223,7 +273,7 @@ function requireRole(target, payload, identity) {
   if (!allowed.includes(role)) {
     throw new Error(`角色 ${role} 不能记录 ${payload.type}${payload.stage ? `(${payload.stage})` : ""}`);
   }
-  if (!roleEmails(target.meta, role).includes(identity.email.toLowerCase())) {
+  if (!roleEmails(target.roleMeta ?? target.meta, role).includes(identity.email.toLowerCase())) {
     throw new Error(`${identity.email} 没有登记为 ${role}；请先更新 status.md 的 ${ROLE_FIELDS[role]}。`);
   }
   return role;
@@ -288,7 +338,7 @@ function sanitizePayload(payload, repoRoot) {
     kept[`${key}Hash`] = redacted.hash;
     if (redacted.changed || localPaths.changed) kept[`${key}Redacted`] = true;
   }
-  for (const key of ["extension", "outcome", "caseCount", "seed"]) {
+  for (const key of ["extension", "outcome", "caseCount", "seed", "reviewRoute"]) {
     if (payload[key] !== undefined) kept[key] = payload[key];
   }
   return kept;
@@ -329,6 +379,12 @@ export function fingerprintRepo(repoRoot, { statusRel, excludePrefixes = [] } = 
 }
 
 function fingerprintCurrentCode(target) {
+  if (target.kind === "hotfix") {
+    return fingerprintRepo(target.root, {
+      statusRel: target.convention.statusFile,
+      excludePrefixes: [path.dirname(target.convention.statusFile), target.convention.archiveDir],
+    });
+  }
   return fingerprintRepo(target.root, {
     statusRel: target.statusRel,
     excludePrefixes: [path.join(target.loopDirRel, "audit")],
@@ -395,7 +451,7 @@ function lastEventInFile(file) {
 }
 
 function selectShard(target, branch) {
-  const dir = path.join(target.loopDir, "audit");
+  const dir = target.auditDir ?? path.join(target.loopDir, "audit");
   if (fs.existsSync(dir)) {
     const stat = fs.lstatSync(dir);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`audit 路径必须是仓库内真实目录：${path.relative(target.root, dir)}`);
@@ -447,9 +503,70 @@ function validatePayload(payload) {
   if (payload.type === "governance_migrated" && !String(payload.reason ?? "").trim()) {
     throw new Error("governance_migrated 必须说明无法补录历史的 reason。");
   }
+  if (payload.type === "hotfix_authorized") {
+    if (!String(payload.input ?? "").trim()) throw new Error("hotfix_authorized 必须记录用户确认原文 input。");
+    if (!["current-subagent", "external-agent"].includes(payload.reviewRoute)) throw new Error("hotfix_authorized 必须记录 reviewRoute。");
+  }
+}
+
+function hotfixTransition(target, payload) {
+  const type = payload.type;
+  const current = fingerprintCurrentCode(target);
+  const audit = readAuditPath(target.auditDir);
+  if (type === "hotfix_authorized") {
+    if (target.meta.status !== "confirmed" || target.meta.hotfixState !== "implementation") throw new Error("Hotfix 授权时必须是 confirmed/implementation。");
+    if (payload.reviewRoute !== target.meta.reviewRoute) throw new Error("事件的 reviewRoute 与 Hotfix 启动选择不一致。");
+    if (target.currentBranch === "DETACHED" || sameBranch(target.currentBranch, target.meta.baseBranch)) throw new Error("Hotfix 必须在区别于 baseBranch 的独立分支或 worktree 上实施。");
+    if (audit.events.some((event) => event.type === "hotfix_authorized" && event.context?.hotfix === target.hotfix)) {
+      throw new Error("Hotfix 已记录启动授权，不能重复授权或静默更换 reviewer 路径。");
+    }
+    return { fields: {} };
+  }
+  if (["implementation_completed", "extension_evaluated"].includes(type)) {
+    if (!["implementation", "review-blocked"].includes(target.meta.hotfixState)) throw new Error(`${type} 只能在 implementation 或 review-blocked 状态记录。`);
+    return { fields: {}, codeFingerprint: current };
+  }
+  if (type === "architecture_reconciled") {
+    if (target.meta.architectureImpact !== "updated") throw new Error("只有 architectureImpact: updated 才记录 architecture_reconciled。");
+    return { fields: {}, codeFingerprint: current };
+  }
+  if (type === "review_completed") {
+    if (payload.reviewRoute !== target.meta.reviewRoute) throw new Error("AI Review 路径与启动选择不一致。");
+    if (payload.outcome === "READY_FOR_HUMAN_REVIEW") {
+      if (!audit.events.some((event) => event.type === "implementation_completed" && event.context?.hotfix === target.hotfix)) throw new Error("缺少 implementation_completed。");
+      for (const extension of BUILTIN_EXTENSIONS) {
+        const evaluation = audit.events.filter((event) => event.type === "extension_evaluated" && event.context?.hotfix === target.hotfix && event.payload?.extension === extension).at(-1);
+        const allowed = extension === "testing" ? ["PASS"] : ["PASS", "N/A"];
+        if (!evaluation || !allowed.includes(evaluation.payload?.outcome) || evaluation.codeFingerprint !== current) throw new Error(`工程扩展 ${extension} 尚未通过当前修复指纹。`);
+      }
+      if (target.meta.architectureImpact === "updated") {
+        const reconciled = audit.events.filter((event) => event.type === "architecture_reconciled" && event.context?.hotfix === target.hotfix).at(-1);
+        if (!reconciled || reconciled.codeFingerprint !== current) throw new Error("Architecture Baseline 尚未按当前修复指纹对账。");
+      }
+    }
+    const state = payload.outcome === "READY_FOR_HUMAN_REVIEW"
+      ? "ready-for-human-review"
+      : payload.outcome === "CHANGES_REQUIRED" ? "implementation" : "review-blocked";
+    return { fields: { hotfixState: state, fixFingerprint: payload.outcome === "CHANGES_REQUIRED" ? "null" : current, updatedAt: new Date().toISOString() }, codeFingerprint: current };
+  }
+  if (type === "human_signed") {
+    if (target.meta.hotfixState !== "ready-for-human-review") throw new Error("只有 READY_FOR_HUMAN_REVIEW 后才能人工签署 Hotfix。");
+    if (!current || current !== target.meta.fixFingerprint) throw new Error("AI Review 后修复内容已变化，旧审查失效。");
+    return { fields: { hotfixState: "human-approved", updatedAt: new Date().toISOString() }, codeFingerprint: current };
+  }
+  if (type === "hotfix_closed") {
+    if (target.hotfixLocation !== "archive" || target.meta.status !== "archived") throw new Error("先把 Hotfix 文件和审计目录移入归档并设置 status: archived，再记录 hotfix_closed。");
+    if (target.meta.hotfixState !== "human-approved") throw new Error("只有人工签署后才能关闭 Hotfix。");
+    const review = audit.events.filter((event) => event.type === "review_completed" && event.context?.hotfix === target.hotfix).at(-1);
+    const signed = audit.events.filter((event) => event.type === "human_signed" && event.context?.hotfix === target.hotfix).at(-1);
+    if (!review || !signed || review.codeFingerprint !== target.meta.fixFingerprint || signed.codeFingerprint !== target.meta.fixFingerprint) throw new Error("归档 Hotfix 缺少当前修复指纹的 AI Review 或人工签署。");
+    return { fields: { hotfixState: "closed", updatedAt: new Date().toISOString() }, codeFingerprint: target.meta.fixFingerprint };
+  }
+  throw new Error(`事件 ${type} 不适用于 Hotfix。`);
 }
 
 function transition(target, payload) {
+  if (target.kind === "hotfix") return hotfixTransition(target, payload);
   const type = payload.type;
   const stage = String(payload.stage ?? target.meta.gateStage ?? "");
   if (type === "stage_approved") {
@@ -544,7 +661,7 @@ function transition(target, payload) {
   return { fields: {} };
 }
 
-export function recordGovernanceEvent({ repoRoot, stream = null, eventFile, overrides = {} }) {
+export function recordGovernanceEvent({ repoRoot, stream = null, hotfix = null, eventFile, overrides = {} }) {
   const raw = readFile(path.resolve(eventFile));
   if (raw === null) throw new Error(`event JSON 读不出来：${eventFile}`);
   let payload;
@@ -554,17 +671,19 @@ export function recordGovernanceEvent({ repoRoot, stream = null, eventFile, over
     throw new Error(`event JSON 不可解析：${error.message}`);
   }
   validatePayload(payload);
-  const target = resolveTarget(repoRoot, stream, overrides, { allowClosed: payload.type === "loop_closed" });
-  if (payload.stage !== undefined && !target.convention.stageDocs.includes(String(payload.stage))) {
+  const target = hotfix
+    ? resolveHotfixTarget(repoRoot, stream, hotfix, overrides)
+    : resolveTarget(repoRoot, stream, overrides, { allowClosed: payload.type === "loop_closed" });
+  if (!hotfix && payload.stage !== undefined && !target.convention.stageDocs.includes(String(payload.stage))) {
     throw new Error(`事件阶段不合法：${payload.stage}`);
   }
-  if (payload.type === "extension_evaluated" && !splitList(target.meta.enabledExtensions).includes(payload.extension)) {
+  if (!hotfix && payload.type === "extension_evaluated" && !splitList(target.meta.enabledExtensions).includes(payload.extension)) {
     throw new Error(`扩展 ${payload.extension} 没有在 enabledExtensions 中启用。`);
   }
-  if (payload.type === "implementation_completed" && target.meta.gateStage !== "implementation") {
+  if (!hotfix && payload.type === "implementation_completed" && target.meta.gateStage !== "implementation") {
     throw new Error("implementation_completed 只能在 Implementation 门禁记录。");
   }
-  if (["architecture_reconciled", "extension_evaluated"].includes(payload.type) && target.meta.gateStage !== "verification") {
+  if (!hotfix && ["architecture_reconciled", "extension_evaluated"].includes(payload.type) && target.meta.gateStage !== "verification") {
     throw new Error(`${payload.type} 只能在 Verification 门禁记录。`);
   }
   const actor = identity(target.root);
@@ -580,7 +699,14 @@ export function recordGovernanceEvent({ repoRoot, stream = null, eventFile, over
     timestamp: new Date().toISOString(),
     type: payload.type,
     actor: { ...actor, role },
-    context: { stream: target.stream, loop: target.loop, stage: payload.stage || target.meta.gateStage, branch, commit },
+    context: {
+      stream: target.stream,
+      loop: target.loop,
+      ...(target.hotfix ? { hotfix: target.hotfix } : {}),
+      stage: hotfix ? null : payload.stage || target.meta.gateStage,
+      branch,
+      commit,
+    },
     payload: sanitizePayload(payload, target.root),
     artifactFingerprint: transitionResult.artifactFingerprint ?? null,
     codeFingerprint: transitionResult.codeFingerprint ?? null,
@@ -594,7 +720,10 @@ export function recordGovernanceEvent({ repoRoot, stream = null, eventFile, over
 }
 
 export function readAuditDirectory(loopDir) {
-  const auditDir = path.join(loopDir, "audit");
+  return readAuditPath(path.join(loopDir, "audit"));
+}
+
+export function readAuditPath(auditDir) {
   if (!fs.existsSync(auditDir)) return { exists: false, files: [], events: [], issues: [] };
   const files = [];
   const events = [];
