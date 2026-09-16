@@ -132,7 +132,7 @@ stateDiagram-v2
 
 ### Full-Test 证据执行器
 
-`/sdd-full-test`（pi 也支持 `/sdd full-test`）用于调度项目自备的测试插件并采集不可变证据包。它定位于“证据执行器”，不替 Reviewer 下通过结论，而是生成带 `manifest.sha256` 的证据包供人工和 AI Review 核实。
+`/sdd-full-test`（pi 也支持 `/sdd full-test`）用于调度项目自备的测试插件并采集可校验证据包。它定位于“证据执行器”，不替 Reviewer 下通过结论，而是生成 `manifest.sha256`，并要求将该清单的 SHA-256 另存到包外，供人工和 AI Review 后续锚定复核。
 
 ```text
 探测测试清单（tests/sdd/plugin.yaml 或可配置路径） → 校验协议 sdd-full-test/v1
@@ -251,7 +251,7 @@ flowchart TD
 | `/sdd init` | `sdd-init` / `/sdd-init` | 仓库还没有 SDD Loop 结构 | 创建项目规则和初始状态，不写业务内容 |
 | `/sdd` | `sdd-interview` / `/sdd-interview` | 启动产品或新一轮 Loop | 访谈并产出 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md` |
 | `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | 已初始化仓库需要补新门禁、治理角色、分流或审计 AGENTS | 无损升级现有 SDD 约定，不伪造历史、不静默替换项目规则 |
-| `/sdd full-test`、`/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | 需要运行项目测试套件采集不可变证据包 | 执行测试、收集证据包与 SHA-256 清单，提议 `verification.md` 待审事实与扩展索赔 |
+| `/sdd full-test`、`/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | 需要运行项目测试套件采集可校验证据包 | 执行测试、收集证据包与可在包外锚定的 SHA-256 清单，提议 `verification.md` 待审事实与扩展索赔 |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation 和自动化验证已经完成 | 架构对账、记录 change surface、AI 审查并准备人工审查包 |
 | `/sdd hotfix`、`/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | 用户选择不推进普通 Loop 的独立紧急修复 | 一份 Hotfix 文档、独立审计、验证、AI Review 与人工签署 |
 

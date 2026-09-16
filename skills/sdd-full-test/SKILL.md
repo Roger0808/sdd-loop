@@ -1,11 +1,11 @@
 ---
 name: sdd-full-test
-description: 驱动项目测试插件执行全维度测试（UI、业务逻辑、安全、性能与 PBT），采集不可变证据包（Evidence Bundle），并为 Verification 和工程扩展整理待审事实。用户说「运行全量测试」「/sdd full-test」「运行冒烟测试」或需要收集自动化验证事实时使用。不代替人或独立 reviewer 下通过结论，不替人工确认。
+description: 驱动项目测试插件执行全维度测试（UI、业务逻辑、安全、性能与 PBT），采集可校验的证据包（Evidence Bundle），并为 Verification 和工程扩展整理待审事实。用户说「运行全量测试」「/sdd full-test」「运行冒烟测试」或需要收集自动化验证事实时使用。不代替人或独立 reviewer 下通过结论，不替人工确认。
 ---
 
 # SDD Full-Test：全维度测试驱动与证据执行器
 
-Full-Test 是 SDD Loop 的**证据执行器（Evidence Runner）**，负责在实施完成后或验证收口前，调度项目自身的测试套件，采集不可变的测试事实与度量指标。
+Full-Test 是 SDD Loop 的**证据执行器（Evidence Runner）**，负责在实施完成后或验证收口前，调度项目自身的测试套件，采集可校验的测试事实与度量指标。
 
 **核心边界：执行器不越权做裁判。**
 - 插件与 Full-Test 只能声明「采集到了哪些客观事实与指标（`extensionClaims`）」，不能自行宣布某个工程扩展（Testing / PBT / Security / Resiliency）已经 PASS。
@@ -26,7 +26,6 @@ discover → validate → plan → preflight → setup
 ### 1. Discover（发现与脚手架引导）
 探测项目自身的测试插件清单（遵循「不硬编码任何项目的目录约定」）：
 - 优先尊重用户显式传入的清单路径参数或状态文件约定的 `testPluginManifest`；
-- 环境变量 `SDD_TEST_PLUGIN` 可覆盖清单位置；
 - 默认回退探测候选：`tests/sdd/plugin.yaml`（或 `.json`）、`docs/testing/plugin.yaml`（或 `.json`）。
 - **冷启动交互引导（Scaffolding Guide）**：
   若项目中均未发现清单文件，主动询问用户并引导生成合规的测试插件脚手架：
@@ -48,6 +47,7 @@ discover → validate → plan → preflight → setup
 根据用户选择（快速冒烟 / 标准回归 / 全量压测 / 自选 suites），生成绑定的上下文与 `plan.json`：
 - 分配唯一的不可变 `runId`（绑定当前 Git HEAD、工作区修改指纹、流与 Loop）；
 - 未选择的套件显式记录在 `plan.json` 的 `skippedSuites` 中，不得伪装成 PASS 或省略。
+- `result.json` 必须携带同一份运行上下文；验证器会交叉核对 `runId`、Git subject、profile 与 suites，`PASS` 必须覆盖全部已选择 suite。
 
 ### 4. Preflight（前置探活）
 在执行任何测试代码前验证依赖环境：
@@ -72,7 +72,8 @@ discover → validate → plan → preflight → setup
 
 ### 8. Verify-Cleanup & Bundle（证据包封存）
 - 汇总所有执行产物写入 `<artifact-root>/<runId>/` 独立目录；
-- 计算目录下所有文件的 SHA-256 哈希值，生成不可变清单 `manifest.sha256`。
+- 计算目录下所有文件的 SHA-256 哈希值，生成完整性清单 `manifest.sha256`；
+- 将 `manifest.sha256` 文件自身的 SHA-256 记录到证据包之外的 `verification.md`、审查 Handoff 或其他可信记录中。之后用 `_full_test verify-bundle --dir <目录> --manifest-sha256 <外部摘要>` 复核；没有外部摘要时只能证明包内文件与当前清单自洽，不能证明二者未被一起重写。
 
 ---
 
@@ -92,7 +93,7 @@ discover → validate → plan → preflight → setup
 
 ---
 
-## 三、不可变证据包（Evidence Bundle）结构
+## 三、可锚定证据包（Evidence Bundle）结构
 
 每次运行的所有产物必须独立归档，格式如下：
 
@@ -106,7 +107,7 @@ docs/testing/runs/<runId>/ (或指定 artifact 目录)
 ├── evidence/          # 导出的原始报告、截图、HTML 或性能指标
 │   ├── coverage.json
 │   └── playwright-report.html
-└── manifest.sha256    # 整个证据包所有文件的 SHA-256 校验和（防篡改）
+└── manifest.sha256    # 包内文件的 SHA-256 完整性清单；其摘要必须另存为外部锚点
 ```
 
 ---

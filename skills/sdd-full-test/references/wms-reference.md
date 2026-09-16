@@ -171,7 +171,26 @@ export async function runConcurrencyTest({ concurrency = 50, requests = 200 } = 
 
 ---
 
-## 3. 标准结果输出（`result.json`）示例
+## 3. 标准计划与结果输出示例
+
+`plan.json` 必须保存由 `createRunBundleContext` 生成的真实 Git 上下文，并显式列出未选择的套件：
+
+```json
+{
+  "runId": "run-20260916T172000Z-7a8f",
+  "protocolVersion": "sdd-full-test/v1",
+  "createdAt": "2026-09-16T17:20:00.000Z",
+  "subject": {
+    "head": "0123456789abcdef0123456789abcdef01234567",
+    "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "stream": "wms",
+    "loop": "loop-4"
+  },
+  "profile": "full",
+  "suites": ["ui-outbound", "biz-pbt", "security-isolation", "perf-concurrency"],
+  "skippedSuites": []
+}
+```
 
 插件 runner 最终将结果整理为协议对象写入 `<artifact-root>/<runId>/result.json`：
 
@@ -180,6 +199,19 @@ export async function runConcurrencyTest({ concurrency = 50, requests = 200 } = 
   "protocolVersion": "sdd-full-test/v1",
   "runId": "run-20260916T172000Z-7a8f",
   "runStatus": "PASS",
+  "context": {
+    "runId": "run-20260916T172000Z-7a8f",
+    "protocolVersion": "sdd-full-test/v1",
+    "createdAt": "2026-09-16T17:20:00.000Z",
+    "subject": {
+      "head": "0123456789abcdef0123456789abcdef01234567",
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stream": "wms",
+      "loop": "loop-4"
+    },
+    "profile": "full",
+    "suites": ["ui-outbound", "biz-pbt", "security-isolation", "perf-concurrency"]
+  },
   "cleanup": {
     "attempted": true,
     "verified": true

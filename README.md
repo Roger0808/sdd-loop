@@ -132,7 +132,7 @@ Each Hotfix has one `hotfix-YYYYMMDD-NN.md`. Single-stream repositories use `doc
 
 ### Full-Test Evidence Runner
 
-`/sdd-full-test` (pi also accepts `/sdd full-test`) executes project test plugins and collects immutable evidence bundles. It acts strictly as an evidence runner, never deciding verification verdicts, and produces bundles with `manifest.sha256` for human and AI Review.
+`/sdd-full-test` (pi also accepts `/sdd full-test`) executes project test plugins and collects verifiable evidence bundles. It acts strictly as an evidence runner, never deciding verification verdicts, and produces bundles with `manifest.sha256`; record that manifest's SHA-256 outside the bundle to anchor later human and AI Review.
 
 ```text
 Discover plugin manifest (tests/sdd/plugin.yaml or custom path) → validate sdd-full-test/v1
@@ -251,7 +251,7 @@ flowchart TD
 | `/sdd init` | `sdd-init` / `/sdd-init` | A repository has no SDD Loop structure | Creates the repository rules and initial status; does not write product content |
 | `/sdd` | `sdd-interview` / `/sdd-interview` | Starting a product or a new Loop | Interviews and produces `requirements.md`, `architecture.md`, `specification.md` and `tasks.md` |
 | `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | An initialized repository needs current gates, governance roles, split-stream migration or AGENTS audit | Upgrades existing SDD conventions without inventing history or silently replacing project rules |
-| `/sdd full-test`, `/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | Project test suites need execution to collect an immutable evidence bundle | Executes tests, builds evidence bundle with SHA-256 manifest, proposes `verification.md` facts and extension claims |
+| `/sdd full-test`, `/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | Project test suites need execution to collect a verifiable evidence bundle | Executes tests, builds evidence bundle with an externally anchorable SHA-256 manifest, proposes `verification.md` facts and extension claims |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation and automated verification are complete | Reconciles architecture, records change surface, runs AI review and prepares human review |
 | `/sdd hotfix`, `/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | The user chooses an urgent fix that must not advance the ordinary Loop | One Hotfix document, isolated audit, verification, AI Review and human sign-off |
 

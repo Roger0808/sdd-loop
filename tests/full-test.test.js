@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync, spawnSync } from "node:child_process";
 
 import {
   FULL_TEST_PROTOCOL_VERSION,
@@ -12,15 +13,51 @@ import {
   validatePluginManifest,
   createRunBundleContext,
   buildEvidenceManifest,
+  calculateEvidenceManifestSha256,
   verifyEvidenceManifest,
   validateExtensionClaims,
   normalizeSuiteResult,
+  validateRunPlan,
   validateRunResult,
   resolveCurrentGitSubject,
 } from "../src/full-test/protocol.js";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const skillContent = () => fs.readFileSync(path.join(ROOT, "skills/sdd-full-test/SKILL.md"), "utf8");
+
+const makeContext = ({ suites = ["suite-1"] } = {}) => ({
+  runId: "run-2026-09-16T10-00-00-000Z-deadbeef",
+  protocolVersion: FULL_TEST_PROTOCOL_VERSION,
+  createdAt: "2026-09-16T10:00:00.000Z",
+  subject: {
+    head: "a".repeat(40),
+    fingerprint: "b".repeat(64),
+    stream: null,
+    loop: null,
+  },
+  profile: "smoke",
+  suites,
+});
+
+const makePlan = (options) => ({ ...makeContext(options), skippedSuites: [] });
+
+const makeResult = ({ status = RUN_STATUS.PASS, suites = ["suite-1"], cleanupVerified = true } = {}) => {
+  const context = makeContext({ suites });
+  return {
+    protocolVersion: FULL_TEST_PROTOCOL_VERSION,
+    runId: context.runId,
+    runStatus: status,
+    cleanup: { attempted: true, verified: cleanupVerified },
+    context,
+    suiteResults: suites.map((id) => ({
+      id,
+      status: status === RUN_STATUS.FAIL ? RUN_STATUS.FAIL : RUN_STATUS.PASS,
+      durationMs: 1,
+      passedCount: status === RUN_STATUS.FAIL ? 0 : 1,
+      failedCount: status === RUN_STATUS.FAIL ? 1 : 0,
+    })),
+  };
+};
 
 // ---------------------------------------------------------------- 协议校验锁
 
@@ -29,6 +66,7 @@ test("协议：合法的 plugin.yaml 声明通过校验", () => {
     protocolVersion: FULL_TEST_PROTOCOL_VERSION,
     id: "wms-test-suite",
     version: "1.0.0",
+    description: "WMS full-test reference plugin",
     entrypoint: {
       argv: ["node", "tests/sdd/runner.mjs"],
     },
@@ -38,6 +76,7 @@ test("协议：合法的 plugin.yaml 声明通过校验", () => {
     },
     requiredEnvironment: [{ name: "TEST_DB_URL", secret: true }],
     resourceLocks: ["mysql:wms-test"],
+    isolation: { strategy: "tenant-and-run-id", cleanupRequired: true },
   };
   const result = validatePluginManifest(manifest);
   assert.equal(result.valid, true, `校验失败：${result.errors.join("; ")}`);
@@ -50,6 +89,7 @@ test("协议：entrypoint 拒绝任意 shell 字符串，必须为 argv 数组�
     { argv: [] },
     { argv: [""] },
     { cmd: "npm test" },
+    { argv: ["sh", "-c", "npm test"] },
   ]) {
     const manifest = {
       protocolVersion: FULL_TEST_PROTOCOL_VERSION,
@@ -90,6 +130,22 @@ test("协议：requiredEnvironment 必须使用字段白名单，拒绝非布尔
   const result2 = validatePluginManifest(probe2);
   assert.equal(result2.valid, false);
   assert.ok(result2.errors.some((e) => e.includes("必须是合法的环境变量大写标识符")));
+
+  // 清单根、entrypoint 与 argv 都不能另开凭据旁路
+  const bypass = validatePluginManifest({
+    protocolVersion: FULL_TEST_PROTOCOL_VERSION,
+    id: "demo",
+    version: "1.0.0",
+    password: "plaintext",
+    entrypoint: {
+      argv: ["node", "runner.mjs", "--token=plaintext"],
+      env: { TOKEN: "plaintext" },
+    },
+  });
+  assert.equal(bypass.valid, false);
+  assert.ok(bypass.errors.some((e) => e.includes("插件清单包含未允许字段：password")));
+  assert.ok(bypass.errors.some((e) => e.includes("entrypoint 包含未允许字段：env")));
+  assert.ok(bypass.errors.some((e) => e.includes("entrypoint.argv 严禁内嵌")));
 });
 
 test("协议：错误版本号或无效 id 格式被拒绝", () => {
@@ -127,25 +183,17 @@ test("状态：严格收敛为五态，拒绝 PARTIAL、N/A 或未知状态", ()
   }
 });
 
-// ---------------------------------------------------------------- 不可变证据包与防篡改锁
+// ---------------------------------------------------------------- 证据包完整性与外部锚点锁
 
-test("不可变证据：buildEvidenceManifest 生成 sha256 清单，内容篡改时校验失败", () => {
+test("证据完整性：buildEvidenceManifest 生成 sha256 清单，内容篡改时校验失败", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-test-bundle-"));
   const logsDir = path.join(tmp, "logs");
   const evidenceDir = path.join(tmp, "evidence");
   fs.mkdirSync(logsDir, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
 
-  fs.writeFileSync(path.join(tmp, "plan.json"), JSON.stringify({ profile: "smoke" }), "utf8");
-  fs.writeFileSync(
-    path.join(tmp, "result.json"),
-    JSON.stringify({
-      protocolVersion: FULL_TEST_PROTOCOL_VERSION,
-      runStatus: "PASS",
-      cleanup: { attempted: true, verified: true },
-    }),
-    "utf8",
-  );
+  fs.writeFileSync(path.join(tmp, "plan.json"), JSON.stringify(makePlan()), "utf8");
+  fs.writeFileSync(path.join(tmp, "result.json"), JSON.stringify(makeResult()), "utf8");
   fs.writeFileSync(path.join(logsDir, "api.log"), "all tests passed\n", "utf8");
   fs.writeFileSync(path.join(evidenceDir, "metrics.json"), JSON.stringify({ qps: 100 }), "utf8");
 
@@ -163,6 +211,7 @@ test("不可变证据：buildEvidenceManifest 生成 sha256 清单，内容篡�
   assert.deepEqual(initialVerify.mismatches, []);
   assert.deepEqual(initialVerify.missing, []);
   assert.deepEqual(initialVerify.errors, []);
+  assert.match(initialVerify.manifestSha256, /^[0-9a-f]{64}$/);
 
   // 篡改一个文件
   fs.appendFileSync(path.join(logsDir, "api.log"), "tampered content");
@@ -177,7 +226,72 @@ test("不可变证据：buildEvidenceManifest 生成 sha256 清单，内容篡�
   assert.ok(missingVerify.missing.includes("plan.json"));
 });
 
-test("不可变证据探针：拒绝空包、缺少必需文件、路径穿越、软链与 manifest 为目录", () => {
+test("证据锚点：清单与证据一起重写时，内部校验可自洽但外部摘要必须拦截", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-test-anchor-"));
+  fs.writeFileSync(path.join(tmp, "plan.json"), JSON.stringify(makePlan()), "utf8");
+  fs.writeFileSync(path.join(tmp, "result.json"), JSON.stringify(makeResult()), "utf8");
+  buildEvidenceManifest(tmp);
+  const externalAnchor = calculateEvidenceManifestSha256(tmp);
+  assert.equal(verifyEvidenceManifest(tmp, { expectedManifestSha256: externalAnchor }).verified, true);
+
+  fs.writeFileSync(
+    path.join(tmp, "result.json"),
+    JSON.stringify(makeResult({ status: RUN_STATUS.FAIL })),
+    "utf8",
+  );
+  buildEvidenceManifest(tmp);
+  assert.equal(verifyEvidenceManifest(tmp).verified, true, "重建清单后只能说明当前包内部自洽");
+  const anchored = verifyEvidenceManifest(tmp, { expectedManifestSha256: externalAnchor });
+  assert.equal(anchored.verified, false);
+  assert.ok(anchored.errors.some((e) => e.includes("与外部锚点不一致")));
+});
+
+test("证据契约：拒绝空计划、未绑定 PASS、plan/result 漂移及越权 claims", () => {
+  const emptyBundle = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-test-unbound-"));
+  fs.writeFileSync(path.join(emptyBundle, "plan.json"), "{}", "utf8");
+  fs.writeFileSync(path.join(emptyBundle, "result.json"), JSON.stringify({
+    protocolVersion: FULL_TEST_PROTOCOL_VERSION,
+    runStatus: RUN_STATUS.PASS,
+    cleanup: { attempted: true, verified: true },
+  }), "utf8");
+  buildEvidenceManifest(emptyBundle);
+  const unbound = verifyEvidenceManifest(emptyBundle);
+  assert.equal(unbound.verified, false);
+  assert.ok(unbound.errors.some((e) => e.includes("plan.json.runId")));
+  assert.ok(unbound.errors.some((e) => e.includes("result.runId")));
+  assert.ok(unbound.errors.some((e) => e.includes("至少必须包含一个已执行 suite")));
+
+  const driftBundle = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-test-context-drift-"));
+  const driftResult = makeResult();
+  driftResult.context = {
+    ...driftResult.context,
+    subject: { ...driftResult.context.subject, fingerprint: "c".repeat(64) },
+  };
+  driftResult.extensionClaims = [{
+    extension: "security",
+    status: "PASS",
+    evidenceIds: [{ status: "PASS" }],
+    facts: { checkedEndpoints: 10 },
+  }];
+  fs.writeFileSync(path.join(driftBundle, "plan.json"), JSON.stringify(makePlan()), "utf8");
+  fs.writeFileSync(path.join(driftBundle, "result.json"), JSON.stringify(driftResult), "utf8");
+  buildEvidenceManifest(driftBundle);
+  const drift = verifyEvidenceManifest(driftBundle);
+  assert.equal(drift.verified, false);
+  assert.ok(drift.errors.some((e) => e.includes("result.context.subject 与 plan.json.subject 不一致")));
+  assert.ok(drift.errors.some((e) => e.includes("未允许顶层字段：status")));
+  assert.ok(drift.errors.some((e) => e.includes("evidenceIds[0] 必须为非空字符串")));
+
+  const cli = spawnSync(
+    process.execPath,
+    ["scripts/sdd-loop.mjs", "_full_test", "verify-bundle", "--dir", driftBundle],
+    { cwd: ROOT, encoding: "utf8" },
+  );
+  assert.equal(cli.status, 2, `CLI 应拒绝越权 bundle，stdout=${cli.stdout} stderr=${cli.stderr}`);
+  assert.match(cli.stderr, /extensionClaims\[0\]/);
+});
+
+test("证据完整性探针：拒绝空包、缺少必需文件、路径穿越、软链与 manifest 为目录", () => {
   // 1. 空目录或只有空的 manifest.sha256
   const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-test-empty-"));
   fs.writeFileSync(path.join(emptyDir, "manifest.sha256"), "", "utf8");
@@ -243,32 +357,36 @@ test("不可变证据探针：拒绝空包、缺少必需文件、路径穿越�
   assert.ok(verifyCorruptPlan.errors.some((e) => e.includes("plan.json 损坏")));
 });
 
-test("不可变证据探针：result.json 必须满足五态、平账验证，且 cleanup 未通过时不得声称 PASS", () => {
+test("证据契约探针：result.json 必须满足五态、运行上下文、suite 与平账约束", () => {
   // 1. 非法状态 PARTIAL
-  const invalidStatus = validateRunResult({
-    protocolVersion: FULL_TEST_PROTOCOL_VERSION,
-    runStatus: "PARTIAL",
-    cleanup: { attempted: true, verified: true },
-  });
+  const invalidStatus = validateRunResult({ ...makeResult(), runStatus: "PARTIAL" });
   assert.equal(invalidStatus.valid, false);
   assert.ok(invalidStatus.errors.some((e) => e.includes("运行状态非法")));
 
   // 2. cleanup.verified: false 却宣布 PASS
-  const fakePass = validateRunResult({
-    protocolVersion: FULL_TEST_PROTOCOL_VERSION,
-    runStatus: "PASS",
-    cleanup: { attempted: true, verified: false },
-  });
+  const fakePass = validateRunResult(makeResult({ cleanupVerified: false }));
   assert.equal(fakePass.valid, false);
-  assert.ok(fakePass.errors.some((e) => e.includes("cleanup.verified 未验证通过时，运行状态严禁宣布为 PASS")));
+  assert.ok(fakePass.errors.some((e) => e.includes("cleanup.verified 未验证通过时，运行状态必须为 ERROR")));
 
-  // 3. 正确的平账失败应该标记为 ERROR 或 FAIL
+  // 3. 正确的平账失败必须标记为 ERROR
   const validError = validateRunResult({
-    protocolVersion: FULL_TEST_PROTOCOL_VERSION,
-    runStatus: "ERROR",
+    ...makeResult({ status: RUN_STATUS.ERROR }),
     cleanup: { attempted: true, verified: false },
+    suiteResults: [],
   });
   assert.equal(validError.valid, true);
+
+  // 4. PASS 必须有 suite，且计数不能与状态冲突
+  const emptyPass = validateRunResult(makeResult({ suites: [] }));
+  assert.equal(emptyPass.valid, false);
+  assert.ok(emptyPass.errors.some((e) => e.includes("至少必须包含一个已执行 suite")));
+
+  const contradictoryCount = validateRunResult({
+    ...makeResult(),
+    suiteResults: [{ id: "suite-1", status: "PASS", passedCount: -1, failedCount: 99 }],
+  });
+  assert.equal(contradictoryCount.valid, false);
+  assert.ok(contradictoryCount.errors.some((e) => e.includes("必须为非负整数") || e.includes("failedCount 必须为 0")));
 });
 
 // ---------------------------------------------------------------- 多对多扩展索赔与反越权锁
@@ -313,6 +431,18 @@ test("扩展索赔探针：顶层或 facts 内部嵌套判定字段（status/ver
   const nestedResult = validateExtensionClaims(nestedInjection);
   assert.equal(nestedResult.valid, false);
   assert.ok(nestedResult.errors.some((e) => e.includes("越权") && e.includes("判定字段或判定值")));
+
+  // 对抗探针 3：evidenceIds 必须是包内安全相对路径，不能藏对象或越界路径
+  const evidenceInjection = validateExtensionClaims([
+    {
+      extension: "security",
+      evidenceIds: [{ status: "PASS" }, "../outside.log"],
+      facts: { checkedEndpoints: 10 },
+    },
+  ]);
+  assert.equal(evidenceInjection.valid, false);
+  assert.ok(evidenceInjection.errors.some((e) => e.includes("evidenceIds[0] 必须为非空字符串")));
+  assert.ok(evidenceInjection.errors.some((e) => e.includes("安全相对路径")));
 });
 
 // ---------------------------------------------------------------- 上下文与真实 Git 绑定锁
@@ -334,28 +464,50 @@ test("上下文：createRunBundleContext 强制要求合法 40 位 Git HEAD 与 
 
   // 2. 拒绝伪造的 7 位伪 HEAD
   assert.throws(
-    () => createRunBundleContext({ repoRoot: ROOT, head: "abc1234", fingerprint: "0".repeat(64) }),
+    () => createRunBundleContext({ repoRoot: ROOT, head: "abc1234", fingerprint: "0".repeat(64), suites: ["suite-1"] }),
     /必须提供合法的 40 位 Git HEAD/,
   );
 
   // 3. 拒绝与仓库真实 HEAD 不一致的伪造 40 位 HEAD
   assert.throws(
-    () => createRunBundleContext({ repoRoot: ROOT, head: "0".repeat(40), fingerprint: gitSubject.fingerprint }),
+    () => createRunBundleContext({ repoRoot: ROOT, head: "0".repeat(40), fingerprint: gitSubject.fingerprint, suites: ["suite-1"] }),
     /与 repoRoot 真实 HEAD .* 不一致/,
   );
 
   // 4. 验证 result.json 中 context 的安全约束：严禁包含本机绝对路径 repoRoot
   const invalidContextResult = validateRunResult({
-    protocolVersion: FULL_TEST_PROTOCOL_VERSION,
-    runStatus: "PASS",
-    cleanup: { attempted: true, verified: true },
+    ...makeResult(),
     context: {
+      ...makeContext(),
       repoRoot: "/Users/secret/repo",
-      subject: { head: gitSubject.head, fingerprint: gitSubject.fingerprint },
     },
   });
   assert.equal(invalidContextResult.valid, false);
   assert.ok(invalidContextResult.errors.some((e) => e.includes("严禁归档本机绝对路径 repoRoot")));
+});
+
+test("上下文对抗探针：工作树内容变化必须改变 fingerprint，即使 porcelain 状态不变", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-test-git-fingerprint-"));
+  const git = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+  git("init", "-q");
+  git("config", "user.name", "SDD Test");
+  git("config", "user.email", "sdd-test@example.invalid");
+  fs.writeFileSync(path.join(repo, "tracked.txt"), "committed\n", "utf8");
+  git("add", "tracked.txt");
+  git("commit", "-qm", "fixture");
+
+  fs.writeFileSync(path.join(repo, "tracked.txt"), "first mutation\n", "utf8");
+  fs.writeFileSync(path.join(repo, "untracked.txt"), "first untracked\n", "utf8");
+  const first = resolveCurrentGitSubject(repo);
+
+  fs.writeFileSync(path.join(repo, "tracked.txt"), "second, completely different mutation\n", "utf8");
+  fs.writeFileSync(path.join(repo, "untracked.txt"), "second untracked content\n", "utf8");
+  const second = resolveCurrentGitSubject(repo);
+
+  assert.equal(first.head, second.head);
+  assert.equal(first.clean, false);
+  assert.equal(second.clean, false);
+  assert.notEqual(first.fingerprint, second.fingerprint);
 });
 
 // ---------------------------------------------------------------- Skill 文档契约锁
@@ -367,11 +519,14 @@ test("Skill 契约：定位于证据执行器，严守生命周期、目录可�
   assert.ok(text.includes("不代替人或独立 reviewer 下通过结论"), "没声明反越权边界");
   assert.ok(text.includes("finally"), "生命周期没锁定 teardown 必须在 finally 路径");
   assert.ok(text.includes("清理失败判定为 `ERROR`"), "没锁定清理失败必须为 ERROR");
-  assert.ok(text.includes("manifest.sha256"), "没声明不可变清单 manifest.sha256");
+  assert.ok(text.includes("manifest.sha256"), "没声明完整性清单 manifest.sha256");
+  assert.ok(text.includes("证据包之外"), "没要求将 manifest 摘要保存到证据包外部");
+  assert.ok(text.includes("不能证明二者未被一起重写"), "没写清无外部锚点时的密码学边界");
 
   // 消除硬编码目录约定绑定
   assert.ok(text.includes("不硬编码任何项目的目录约定"), "未声明遵循不硬编码目录约定");
-  assert.ok(text.includes("SDD_TEST_PLUGIN") || text.includes("testPluginManifest"), "未提供可配置的清单路径支持");
+  assert.ok(text.includes("testPluginManifest"), "未提供仓库内可审计的清单路径约定");
+  assert.ok(!text.includes("SDD_TEST_PLUGIN"), "本包承重墙声明无环境变量，Skill 不得另开环境变量配置通道");
 
   for (const status of ["PASS", "FAIL", "BLOCKED", "ERROR", "CANCELLED"]) {
     assert.ok(text.includes(`\`${status}\``), `Skill 文档缺状态定义 ${status}`);

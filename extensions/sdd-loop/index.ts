@@ -265,8 +265,8 @@ export default function (pi: ExtensionAPI) {
 
 	const FULL_TEST_MESSAGE =
 		"请加载 sdd-full-test skill，作为证据执行器调度项目的测试插件：" +
-		"探测项目配置的测试插件清单（优先尊重显式传入的清单路径、环境变量 SDD_TEST_PLUGIN 或项目约定，不硬编码项目目录约定），让我选择 profile 或 suites，" +
-		"做 preflight 探活并在 finally 路径执行 teardown 平账清理，最后生成带 manifest.sha256 的不可变 Evidence Bundle，" +
+		"探测项目配置的测试插件清单（优先尊重显式传入的清单路径或项目约定，不硬编码项目目录约定），让我选择 profile 或 suites，" +
+		"做 preflight 探活并在 finally 路径执行 teardown 平账清理，最后生成带 manifest.sha256 的 Evidence Bundle，并把清单摘要记录到包外作为复核锚点，" +
 		"并整理 verification.md 的待审补丁与 extensionClaims。不要替我下通过结论，也不要自动确认门禁。";
 
 	const SDD_USAGE = "用法：/sdd [init|upgrade|review|hotfix|full-test]；不带子命令时开始访谈。";
@@ -305,7 +305,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("sdd-full-test", {
-		description: "SDD Full-Test：调度项目测试插件，采集不可变证据包并整理待审事实",
+		description: "SDD Full-Test：调度项目测试插件，采集可锚定证据包并整理待审事实",
 		handler: async (args: any, _ctx: any) => {
 			const extra = String(args ?? "").trim();
 			const msg = extra

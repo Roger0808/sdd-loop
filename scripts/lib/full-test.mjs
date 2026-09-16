@@ -12,7 +12,7 @@ import { EXIT_OK, EXIT_UNUSABLE } from "./exit-codes.mjs";
 
 /**
  * Skills 与开发者使用的只读检查工具入口：
- * 提供清单 schema 校验、不可变证据包完整性校验与待审 claims 越权校验，不负责判决 Verification。
+ * 提供清单 schema 校验、可锚定证据包完整性校验与待审 claims 越权校验，不负责判决 Verification。
  * 异常受控捕获，绝不向终端泄漏未捕获 Node 堆栈。
  */
 export function runFullTestCli(args, io) {
@@ -51,7 +51,8 @@ export function runFullTestCli(args, io) {
         return;
       }
 
-      const result = verifyEvidenceManifest(dir);
+      const expectedManifestSha256 = args["manifest-sha256"] || undefined;
+      const result = verifyEvidenceManifest(dir, { expectedManifestSha256 });
       if (!result.verified) {
         const issues = [
           ...result.errors,
@@ -63,7 +64,14 @@ export function runFullTestCli(args, io) {
         return;
       }
 
-      io.stdout("证据包完整性验证通过（SHA-256 清单与契约一致）。\n");
+      if (result.anchored) {
+        io.stdout(`证据包完整性与外部锚点验证通过（manifest SHA-256: ${result.manifestSha256}）。\n`);
+      } else {
+        io.stdout(
+          `证据包内部完整性验证通过（manifest SHA-256: ${result.manifestSha256}）；` +
+          "未提供外部锚点，不能据此证明清单与证据未被一并重写。\n",
+        );
+      }
       io.exit(EXIT_OK);
       return;
     }
@@ -92,7 +100,7 @@ export function runFullTestCli(args, io) {
       return;
     }
 
-    io.stderr("内部用法：sdd-loop _full_test [verify-manifest --file <path> | verify-bundle --dir <dir> | verify-claims --file <path>]\n");
+    io.stderr("内部用法：sdd-loop _full_test [verify-manifest --file <path> | verify-bundle --dir <dir> [--manifest-sha256 <外部锚点>] | verify-claims --file <path>]\n");
     io.exit(EXIT_UNUSABLE);
   } catch (fatalError) {
     io.stderr(`命令执行失败：${fatalError.message}\n`);
