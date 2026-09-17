@@ -249,7 +249,7 @@ flowchart TD
 | pi command | Skill name / slash alias | Use it when | Result |
 |---|---|---|---|
 | `/sdd init` | `sdd-init` / `/sdd-init` | A repository has no SDD Loop structure | Creates the repository rules and initial status; does not write product content |
-| `/sdd` | `sdd-interview` / `/sdd-interview` | Starting a product or a new Loop | Interviews and produces `requirements.md`, `architecture.md`, `specification.md` and `tasks.md` |
+| `/sdd` | `sdd-interview` / `/sdd-interview` | Starting a product or a new Loop | Interviews and produces `requirements.md`, `architecture.md`, `specification.md` and `tasks.md`; each Requirements round can use the standard flow or an optional deep interview that the user can stop at any time |
 | `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | An initialized repository needs current gates, governance roles, split-stream migration or AGENTS audit | Upgrades existing SDD conventions without inventing history or silently replacing project rules |
 | `/sdd full-test`, `/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | Project test suites need execution to collect a verifiable evidence bundle | Executes tests, builds evidence bundle with an externally anchorable SHA-256 manifest, proposes `verification.md` facts and extension claims |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation and automated verification are complete | Reconciles architecture, records change surface, runs AI review and prepares human review |

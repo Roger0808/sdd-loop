@@ -82,7 +82,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | CLI | `scripts/sdd-loop.mjs` + `scripts/lib/` | `check` / `guide` / `capabilities` / `init` 四个用户子命令和 Skills 内部 `_governance` / `_hotfix` / `_full_test` 入口；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。 |
 | pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd`、init、upgrade、review、hotfix、full-test 工作流路由；未知子命令只返回用法。 |
 | Skill · init | `skills/sdd-init/` | SKILL.md + AGENTS/CLAUDE/Baseline 模板 + `AGENTS.md.CHANGELOG.md` 与 `AGENTS.md.AUDIT.md`。模板不用会被宿主自动读走的真名。 |
-| Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编）。第 0 站**先定流、再捞 backlog**——顺序反了就筛不出该摆哪几条 |
+| Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编）。Requirements 每轮开局可选标准或内建的深挖问答，深挖不依赖外部 skill、可随时退出且不改变审批门禁。第 0 站**先定流、再捞 backlog**——顺序反了就筛不出该摆哪几条 |
 | Skill · 升级 | `skills/sdd-upgrade/SKILL.md` | 老仓库的条款对齐、形态迁移和逐项授权的 AGENTS Candidate 审计。 |
 | Skill · 审查 | `skills/sdd-review/SKILL.md` | 实施指纹、架构回写、change surface、人类选择 reviewer、只读 subagent/跨 Agent handoff 和人工审查门禁。 |
 | Skill · Hotfix | `skills/sdd-hotfix/SKILL.md` | 独立文档、隔离分支、验证、独立只读审查与人工签署。 |
