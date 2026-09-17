@@ -25,13 +25,9 @@ import {
 	DEFAULT_MAX_LINES,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-// @ts-expect-error src 是纯 ESM JS，无类型声明
 import { buildRepoCheckReport } from "../../src/validation/loop-check.js";
-// @ts-expect-error
 import { guideFor, listGuideTypes } from "../../src/spec-guide/dictionary.js";
-// @ts-expect-error
 import { scanIdFamilies } from "../../src/spec-guide/id-scan.js";
-// @ts-expect-error
 import { pickExample } from "../../src/spec-guide/example.js";
 
 function truncate(text: string): string {
