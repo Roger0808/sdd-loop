@@ -38,7 +38,7 @@ function fail(entry, detail, extra = {}) {
  * @param {object} overrides 约定覆盖（见 src/loop/convention.js）
  * @returns 数据；渲染与退出码由调用方决定
  */
-export function buildLoopCheckReport(repoRoot, overrides = {}) {
+export function buildLoopCheckReport(repoRoot, overrides = {}, options = {}) {
   const scan = scanLoopRepo(repoRoot, overrides);
   const { convention, status, active, strayLoopDirs, closed } = scan;
 
@@ -175,7 +175,7 @@ export function buildLoopCheckReport(repoRoot, overrides = {}) {
     }
   }
 
-  const governanceChecks = buildGovernanceChecks(scan);
+  const governanceChecks = buildGovernanceChecks(scan, options);
   const hotfix = buildHotfixChecks(scan);
   const checks = [c1, c2, c3, c4, c5, ...governanceChecks, ...hotfix.checks];
   const problems = [
@@ -262,7 +262,7 @@ export function buildRepoCheckReport(repoRoot, overrides = {}, options = {}) {
     // 而仓库里可能有七条，那是一句假话，读者据此以为自己看全了。
     return {
       ...aggregate("streams", [
-        { name: requested, report: buildLoopCheckReport(repoRoot, conventionForStream(requested, overrides)) },
+        { name: requested, report: buildLoopCheckReport(repoRoot, conventionForStream(requested, overrides), { stream: requested }) },
       ]),
       requestedStream: requested,
     };
@@ -275,7 +275,7 @@ export function buildRepoCheckReport(repoRoot, overrides = {}, options = {}) {
     "streams",
     found.streams.map((name) => ({
       name,
-      report: buildLoopCheckReport(repoRoot, conventionForStream(name, overrides)),
+      report: buildLoopCheckReport(repoRoot, conventionForStream(name, overrides), { stream: name }),
     })),
   );
 }

@@ -15,7 +15,7 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 
 ## 固定本次审查对象
 
-生成并记录指纹：基线 commit、HEAD、`git status --short`、任务范围、已跟踪 diff 的哈希，以及纳入审查的未跟踪文件清单与内容哈希。不为了审查强制提交；审查未提交改动时，指纹必须包含它们。
+生成并记录指纹：基线 commit、HEAD、`git status --short`、任务范围、已跟踪 diff 的哈希，以及纳入审查的未跟踪文件清单与内容哈希。不为了审查强制提交；审查未提交改动时，指纹必须包含它们。分流仓库还要从本轮 change surface 生成去重、排序后的 `deliveryScope`：只列仓库相对文件或目录，覆盖本轮真实交付的代码、配置、迁移、测试和长期文档；不把别的流目录塞进来，也不得为了让 C10 变绿漏掉共享文件。
 
 审查完成后再计算一次。代码、配置、迁移、测试、Loop 关键文档或 Architecture Baseline 任一变化，旧审查失效，必须重跑。
 
@@ -68,10 +68,16 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 
 实施基线缺失、审查对象无法固定或 Architecture Baseline 尚未完成反向对账时，必须给 `NOT_REVIEWABLE_SAFELY`；自动化验证失败或 reviewer 有阻断发现时，必须给 `CHANGES_REQUIRED`。两者都不得进入人工通过或关闭 Loop。
 
-治理模式下用 `review_completed` 记录唯一结论。只有当前指纹已有 `architecture_reconciled` 且四项扩展均为 PASS 或合理 N/A 时，工具才接受 `READY_FOR_HUMAN_REVIEW`。
+治理模式下用 `review_completed` 记录唯一结论。只有当前指纹已有 `architecture_reconciled` 且四项扩展均为 PASS 或合理 N/A 时，工具才接受 `READY_FOR_HUMAN_REVIEW`；分流仓库还必须在该事件写入本轮 `deliveryScope`。这个范围随 AI Review、人工签署和 `loop_closed` 一起固定，关闭后 C10 只重算它，因此其他流修改自己范围不会使本流变红。
 
 ## 人工门禁
 
 只有人工明确通过当前指纹对应的审查包，并在 `verification.md` 记录确认人、时间、审查版本和指纹后，才能把 verification 改为 `confirmed` 并关闭 Loop。AI 不得从“用户没有反对”、以前 Loop 的确认或 `READY_FOR_HUMAN_REVIEW` 推导人工已经通过。
 
 人工明确通过后记录 `human_signed`；随后按项目规则归档六份阶段文档并更新 `activeLoop` / `lastClosedLoop`，最后记录 `loop_closed`。两者都要求 Approver 的 Git 邮箱与状态文件角色映射一致；关闭事件允许阶段文档从活跃目录迁入归档，但会拒绝签署后发生的代码、配置或长期文档变化。
+
+## 已关闭 Loop 的交付漂移
+
+新版本关闭的分流 Loop 已由 `deliveryScope` 隔离：别的流或新一轮只要没有修改该范围，就不应触发 C10。只有该范围自身后续变化才进入漂移接受；此时不重开旧 Loop，不改写审计分片，也不补造 `review_completed`、`human_signed` 或 `loop_closed`。先列出从最近一次 `loop_closed`（或最近一次漂移接受）到当前版本在保护范围内的变化，确认没有改动该 Loop 自己的已归档阶段文档、审计记录或签署事实，再把变化清单、核对依据和剩余风险交给人类 Approver。
+
+只有 Approver 明确接受当前漂移后，才通过内部治理入口追加 `closure_drift_accepted`。事件 JSON 至少包含：`type: "closure_drift_accepted"`、`role: "approver"`、非空 `summary`、解释为什么可接受的 `reason`，以及列出已核对签署后变化的 `evidence`；分流仓库仍须传 `--stream`。没有 `deliveryScope` 的存量分流 Loop 还必须在第一次接受时补录真实范围；已有范围时沿用原值，工具拒绝关闭后缩小或替换。事件只绑定记录当时的范围指纹，不改变原审查与签署指纹；之后该范围再次变化，C10 必须重新变红并再次人工核对。旧 CLI 不认识该事件时会继续报红，不能把旧工具的结果解释成已经接受。未取得明确接受、原关闭链不完整、当前没有实际漂移或无法说明变化范围时停止，不记录事件。

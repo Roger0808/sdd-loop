@@ -247,6 +247,16 @@ test("模板在 check 前强制 governance 能力预检，失败时不自动升�
   assert.ok(text.includes("未经用户明确授权不得自动下载、安装、链接或切换工具版本"));
 });
 
+test("模板声明关闭后漂移只能由 Approver 追加接受且不得补签旧事件", () => {
+  const text = agentsTemplate();
+  assert.ok(text.includes("closure_drift_accepted"));
+  assert.ok(text.includes("review_completed") && text.includes("deliveryScope"));
+  assert.ok(text.includes("其他流修改自己范围不得使本流变红"));
+  assert.ok(text.includes("只有 Approver 核对当前漂移并明确接受后"));
+  assert.ok(text.includes("不得补签旧事件"));
+  assert.ok(text.includes("仓库在该范围内再次变化会重新触发 C10"));
+});
+
 test("模板留了占位符，落地时必须替换（写死项目名等于把上一个项目的上下文发给所有人）", () => {
   const text = agentsTemplate();
   assert.ok(text.includes("{{PROJECT_NAME}}"), "项目名占位符丢了");

@@ -272,7 +272,7 @@ sdd-loop check --json
 | `1` | declarations contradict repository facts |
 | `2` | evidence is unreadable; no verdict |
 
-Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. When Hotfix files exist, H1–H5 are appended; without Hotfix files, existing text, JSON, pi details and exit codes stay unchanged.
+Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. In split-stream repositories, `review_completed` records the Loop's reviewed `deliveryScope`; C10 later fingerprints only that scope, so delivery in a sibling stream does not invalidate the closed Loop. If its own protected scope later changes legitimately, an Approver can append `closure_drift_accepted` with the reviewed reason and evidence; legacy closed streams establish their scope during this first acceptance, and established scopes cannot be narrowed or replaced. Any later change inside that scope fails closed again. Older CLIs remain red rather than silently accepting the new event. Loop control and archive directories are excluded from split-stream delivery fingerprints. When Hotfix files exist, H1–H5 are appended; without Hotfix files, existing text, JSON, pi details and exit codes stay unchanged.
 
 ### Clause guide
 

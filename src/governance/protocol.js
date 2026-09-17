@@ -60,6 +60,7 @@ const EVENT_ROLES = Object.freeze({
   review_completed: ["reviewer"],
   human_signed: ["approver"],
   loop_closed: ["approver"],
+  closure_drift_accepted: ["approver"],
   hotfix_authorized: ["requester", "product"],
   hotfix_closed: ["approver"],
 });
@@ -328,6 +329,51 @@ function redactText(value) {
   return { text, changed: text !== original, hash: sha256(original) };
 }
 
+export function normalizeDeliveryScope(value, { required = false } = {}) {
+  if (value === undefined || value === null) {
+    if (required) throw new Error("分流交付必须提供非空 deliveryScope。");
+    return null;
+  }
+  if (!Array.isArray(value) || !value.length) throw new Error("deliveryScope 必须是非空的仓库相对路径数组。");
+  const normalized = [];
+  for (const item of value) {
+    if (typeof item !== "string" || !item.trim()) throw new Error("deliveryScope 只能包含非空字符串路径。");
+    const rel = item.trim().replace(/\/$/, "");
+    if (rel.includes("\\") || path.posix.isAbsolute(rel) || rel === "." || rel.split("/").some((part) => part === "" || part === "." || part === "..")) {
+      throw new Error(`deliveryScope 不是安全的仓库相对路径：${item}`);
+    }
+    if (/[*?\[\]{}]/.test(rel)) throw new Error(`deliveryScope 不支持通配符，必须列出真实文件或目录：${item}`);
+    if (rel === ".git" || rel.startsWith(".git/")) throw new Error("deliveryScope 不能包含 .git。");
+    normalized.push(rel);
+  }
+  return [...new Set(normalized)].sort();
+}
+
+function validateDeliveryScopeForTarget(target, value) {
+  const scope = normalizeDeliveryScope(value, { required: true });
+  const loopControlDir = target.stream
+    ? path.dirname(path.dirname(target.statusRel)).split(path.sep).join("/")
+    : path.dirname(target.statusRel).split(path.sep).join("/");
+  const archiveControlDir = target.stream
+    ? path.dirname(target.convention.archiveDir).split(path.sep).join("/")
+    : target.convention.archiveDir.split(path.sep).join("/");
+  const forbidden = [loopControlDir, archiveControlDir];
+  for (const prefix of scope) {
+    if (forbidden.some((root) => prefix === root || prefix.startsWith(`${root}/`) || root.startsWith(`${prefix}/`))) {
+      throw new Error(`deliveryScope 不能覆盖 Loop 控制或归档目录：${prefix}`);
+    }
+  }
+  const listed = git(target.root, ["ls-files", "-co", "--exclude-standard"]);
+  if (listed === null) throw new Error("Git 文件清单不可用，不能验证 deliveryScope。");
+  const files = listed.split("\n").filter(Boolean).map((rel) => rel.split(path.sep).join("/"));
+  for (const prefix of scope) {
+    if (!files.some((file) => file === prefix || file.startsWith(`${prefix}/`))) {
+      throw new Error(`deliveryScope 没有匹配任何 Git 已知文件：${prefix}`);
+    }
+  }
+  return scope;
+}
+
 function sanitizePayload(payload, repoRoot) {
   const kept = {};
   for (const key of ["summary", "input", "evidence", "reason", "minimalCounterexample"]) {
@@ -341,6 +387,7 @@ function sanitizePayload(payload, repoRoot) {
   for (const key of ["extension", "outcome", "caseCount", "seed", "reviewRoute"]) {
     if (payload[key] !== undefined) kept[key] = payload[key];
   }
+  if (payload.deliveryScope !== undefined) kept.deliveryScope = normalizeDeliveryScope(payload.deliveryScope, { required: true });
   return kept;
 }
 
@@ -349,16 +396,19 @@ export function fingerprintFile(absPath) {
   return content === null ? null : sha256(content);
 }
 
-export function fingerprintRepo(repoRoot, { statusRel, excludePrefixes = [] } = {}) {
+export function fingerprintRepo(repoRoot, { statusRel, excludePrefixes = [], includePrefixes = [] } = {}) {
   const root = path.resolve(repoRoot);
   const output = git(root, ["ls-files", "-co", "--exclude-standard"]);
   if (output === null) return null;
   const normalizedStatus = statusRel?.split(path.sep).join("/");
   const normalizedPrefixes = excludePrefixes.map((prefix) => prefix.split(path.sep).join("/").replace(/\/$/, ""));
+  const normalizedIncludes = includePrefixes.map((prefix) => prefix.split(path.sep).join("/").replace(/\/$/, ""));
   const files = output.split("\n").filter(Boolean).filter((rel) => {
     const normalized = rel.split(path.sep).join("/");
     if (normalizedStatus && normalized === normalizedStatus) return false;
-    return !normalizedPrefixes.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
+    if (normalizedPrefixes.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`))) return false;
+    return !normalizedIncludes.length
+      || normalizedIncludes.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
   }).sort();
   const hash = crypto.createHash("sha256");
   for (const rel of files) {
@@ -391,10 +441,28 @@ function fingerprintCurrentCode(target) {
   });
 }
 
-function deliveryFingerprint(target) {
-  return fingerprintRepo(target.root, {
+function deliveryFingerprint(target, deliveryScope = null) {
+  return fingerprintDelivery(target.root, {
     statusRel: target.statusRel,
-    excludePrefixes: [path.dirname(target.convention.statusFile), target.convention.archiveDir],
+    archiveDir: target.convention.archiveDir,
+    stream: target.stream,
+    deliveryScope,
+  });
+}
+
+/**
+ * 交付指纹只覆盖业务代码、配置和长期文档，不把 Loop 自己的状态、阶段文档和审计事件算进去。
+ *
+ * 单流沿用原来的两个排除根。分流必须排除所有流共用的控制根，而不是只排除当前流：
+ * 否则别的流追加一条合法审计事件，也会被误判成当前已关闭 Loop 的交付漂移。
+ */
+export function fingerprintDelivery(repoRoot, { statusRel, archiveDir, stream = null, deliveryScope = null } = {}) {
+  const loopControlDir = stream ? path.dirname(path.dirname(statusRel)) : path.dirname(statusRel);
+  const archiveControlDir = stream ? path.dirname(archiveDir) : archiveDir;
+  return fingerprintRepo(repoRoot, {
+    statusRel,
+    excludePrefixes: [loopControlDir, archiveControlDir],
+    includePrefixes: stream && deliveryScope ? normalizeDeliveryScope(deliveryScope, { required: true }) : [],
   });
 }
 
@@ -494,6 +562,7 @@ function validatePayload(payload) {
   if (payload.type === "review_completed" && !REVIEW_OUTCOMES.includes(payload.outcome)) {
     throw new Error(`AI Review 结果必须是：${REVIEW_OUTCOMES.join(" / ")}`);
   }
+  if (payload.deliveryScope !== undefined) normalizeDeliveryScope(payload.deliveryScope, { required: true });
   if (["intent_captured", "question_answered"].includes(payload.type) && !String(payload.input ?? "").trim()) {
     throw new Error(`${payload.type} 必须包含用户原始 input。`);
   }
@@ -502,6 +571,10 @@ function validatePayload(payload) {
   }
   if (payload.type === "governance_migrated" && !String(payload.reason ?? "").trim()) {
     throw new Error("governance_migrated 必须说明无法补录历史的 reason。");
+  }
+  if (payload.type === "closure_drift_accepted") {
+    if (!String(payload.reason ?? "").trim()) throw new Error("closure_drift_accepted 必须说明接受漂移的 reason。");
+    if (!String(payload.evidence ?? "").trim()) throw new Error("closure_drift_accepted 必须在 evidence 中列出已核对并接受的签署后变化。");
   }
   if (payload.type === "hotfix_authorized") {
     if (!String(payload.input ?? "").trim()) throw new Error("hotfix_authorized 必须记录用户确认原文 input。");
@@ -611,13 +684,22 @@ function transition(target, payload) {
     const fields = payload.outcome === "CHANGES_REQUIRED"
       ? { gateStage: "implementation", gateState: state, gateFingerprint: "null", nextPhase: "implementation" }
       : { gateState: state, gateFingerprint: currentFingerprint };
-    return { fields, codeFingerprint: currentFingerprint, deliveryFingerprint: deliveryFingerprint(target) };
+    if (!target.stream && payload.deliveryScope !== undefined) throw new Error("单流仓库不使用 deliveryScope；交付指纹继续覆盖整个仓库。");
+    const scope = target.stream && payload.outcome === "READY_FOR_HUMAN_REVIEW"
+      ? validateDeliveryScopeForTarget(target, payload.deliveryScope)
+      : null;
+    return { fields, codeFingerprint: currentFingerprint, deliveryFingerprint: deliveryFingerprint(target, scope) };
   }
   if (type === "human_signed") {
     if (target.meta.gateState !== "ready-for-human-review") throw new Error("只有 READY_FOR_HUMAN_REVIEW 后才能人工签署。");
     const currentFingerprint = fingerprintCurrentCode(target);
     if (!currentFingerprint || currentFingerprint !== target.meta.gateFingerprint) throw new Error("审查后代码或关键文档已变化，旧审查失效。");
-    return { fields: { gateState: "human-approved" }, codeFingerprint: currentFingerprint, deliveryFingerprint: deliveryFingerprint(target) };
+    const audit = readAuditDirectory(target.loopDir);
+    const review = audit.events.filter((event) => event.type === "review_completed").at(-1);
+    const scope = target.stream ? normalizeDeliveryScope(review?.payload?.deliveryScope) : null;
+    const delivery = deliveryFingerprint(target, scope);
+    if (!review || !delivery || delivery !== review.deliveryFingerprint) throw new Error("AI Review 后交付范围发生变化，旧审查失效。");
+    return { fields: { gateState: "human-approved" }, codeFingerprint: currentFingerprint, deliveryFingerprint: delivery };
   }
   if (type === "governance_migrated") {
     if (stage !== target.meta.gateStage) throw new Error(`治理迁移阶段必须等于当前 gateStage: ${target.meta.gateStage}。`);
@@ -651,12 +733,51 @@ function transition(target, payload) {
     const audit = readAuditDirectory(target.loopDir);
     const review = audit.events.filter((event) => event.type === "review_completed").at(-1);
     const signed = audit.events.filter((event) => event.type === "human_signed").at(-1);
-    const delivery = deliveryFingerprint(target);
+    const scope = target.stream ? normalizeDeliveryScope(review?.payload?.deliveryScope) : null;
+    const delivery = deliveryFingerprint(target, scope);
     if (!review || !signed || review.codeFingerprint !== target.meta.gateFingerprint || signed.codeFingerprint !== target.meta.gateFingerprint) {
       throw new Error("已归档 Loop 缺少当前审查指纹对应的 AI Review 或人工签署。");
     }
     if (!delivery || delivery !== review.deliveryFingerprint) throw new Error("人工签署后代码、配置或长期文档发生变化，不能关闭 Loop。");
     return { fields: { gateState: "closed" }, codeFingerprint: target.meta.gateFingerprint, deliveryFingerprint: delivery };
+  }
+  if (type === "closure_drift_accepted") {
+    if (target.meta.gateState !== "closed" || !isBlank(target.meta.activeLoop)) {
+      throw new Error("closure_drift_accepted 只能追加到已经关闭并归档的 Loop。");
+    }
+    const audit = readAuditDirectory(target.loopDir);
+    const review = audit.events.filter((event) => event.type === "review_completed").at(-1);
+    const signed = audit.events.filter((event) => event.type === "human_signed").at(-1);
+    const closed = audit.events.filter((event) => event.type === "loop_closed").at(-1);
+    if (!review || !signed || !closed
+      || review.codeFingerprint !== target.meta.gateFingerprint
+      || signed.codeFingerprint !== target.meta.gateFingerprint
+      || closed.codeFingerprint !== target.meta.gateFingerprint
+      || closed.deliveryFingerprint !== review.deliveryFingerprint) {
+      throw new Error("原 Loop 的 AI Review、人工签署或关闭交付指纹不完整，不能用漂移接受绕过原关闭门禁。");
+    }
+    if (!target.stream && payload.deliveryScope !== undefined) throw new Error("单流仓库不使用 deliveryScope。");
+    const accepted = audit.events.filter((event) => event.type === "closure_drift_accepted").at(-1);
+    const reviewScope = target.stream ? normalizeDeliveryScope(review.payload?.deliveryScope) : null;
+    const acceptedScope = target.stream ? normalizeDeliveryScope(accepted?.payload?.deliveryScope) : null;
+    const establishedScope = reviewScope ?? acceptedScope;
+    const requestedScope = target.stream ? normalizeDeliveryScope(payload.deliveryScope) : null;
+    if (establishedScope && requestedScope && JSON.stringify(establishedScope) !== JSON.stringify(requestedScope)) {
+      throw new Error("已经签署的 deliveryScope 不能在关闭后被缩小或替换。");
+    }
+    const scope = target.stream
+      ? (establishedScope ?? validateDeliveryScopeForTarget(target, payload.deliveryScope))
+      : null;
+    const delivery = deliveryFingerprint(target, scope);
+    if (!delivery) throw new Error("当前仓库交付指纹不可用，不能接受漂移。");
+    const baseline = accepted?.deliveryFingerprint ?? closed.deliveryFingerprint;
+    if (delivery === baseline) throw new Error("当前交付与最近一次关闭/接受时一致，没有需要接受的漂移。");
+    return {
+      fields: {},
+      codeFingerprint: target.meta.gateFingerprint,
+      deliveryFingerprint: delivery,
+      deliveryScope: scope,
+    };
   }
   return { fields: {} };
 }
@@ -673,7 +794,9 @@ export function recordGovernanceEvent({ repoRoot, stream = null, hotfix = null, 
   validatePayload(payload);
   const target = hotfix
     ? resolveHotfixTarget(repoRoot, stream, hotfix, overrides)
-    : resolveTarget(repoRoot, stream, overrides, { allowClosed: payload.type === "loop_closed" });
+    : resolveTarget(repoRoot, stream, overrides, {
+      allowClosed: ["loop_closed", "closure_drift_accepted"].includes(payload.type),
+    });
   if (!hotfix && payload.stage !== undefined && !target.convention.stageDocs.includes(String(payload.stage))) {
     throw new Error(`事件阶段不合法：${payload.stage}`);
   }
@@ -707,7 +830,10 @@ export function recordGovernanceEvent({ repoRoot, stream = null, hotfix = null, 
       branch,
       commit,
     },
-    payload: sanitizePayload(payload, target.root),
+    payload: {
+      ...sanitizePayload(payload, target.root),
+      ...(transitionResult.deliveryScope ? { deliveryScope: transitionResult.deliveryScope } : {}),
+    },
     artifactFingerprint: transitionResult.artifactFingerprint ?? null,
     codeFingerprint: transitionResult.codeFingerprint ?? null,
     deliveryFingerprint: transitionResult.deliveryFingerprint ?? null,
