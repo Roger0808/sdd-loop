@@ -23,6 +23,7 @@ import {
 	truncateHead,
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
+	type AgentToolResult,
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import { buildRepoCheckReport } from "../../src/validation/loop-check.js";
@@ -157,6 +158,7 @@ function renderGuideList(): string {
 	const lines: string[] = ["可用类型（type 取其一）："];
 	for (const type of listGuideTypes()) {
 		const entry = guideFor(type);
+		if (!entry) continue;
 		lines.push(`- ${type} —— ${entry.title}`);
 	}
 	return lines.join("\n");
@@ -210,7 +212,7 @@ export default function (pi: ExtensionAPI) {
 			repo: Type.Optional(Type.String({ description: "仓库根，默认当前工作目录" })),
 			docsDir: Type.Optional(Type.String({ description: "编号族扫描目录，默认 docs" })),
 		}),
-		async execute(_id: string, params: any, _signal: any, _onUpdate: any, ctx: any) {
+		async execute(_id: string, params: any, _signal: any, _onUpdate: any, ctx: any): Promise<AgentToolResult<any>> {
 			if (!params.type) {
 				return { content: [{ type: "text", text: renderGuideList() }], details: { types: listGuideTypes() } };
 			}
