@@ -98,6 +98,19 @@ test("review 逐项复核四个工程扩展，并规定没有 PBT 库时的降�
   assert.ok(text.includes("没有 PBT 库不构成 N/A 理由"));
 });
 
+test("review 为已关闭 Loop 提供只追加、逐指纹的漂移接受路径", () => {
+  const text = review();
+  assert.ok(text.includes("closure_drift_accepted"));
+  assert.ok(text.includes("deliveryScope"));
+  assert.ok(text.includes("其他流修改自己范围不会使本流变红"));
+  assert.ok(text.includes("已有范围时沿用原值"));
+  assert.ok(text.includes("只有 Approver 明确接受当前漂移后"));
+  assert.ok(text.includes("不改写审计分片"));
+  assert.ok(text.includes("该范围再次变化"));
+  assert.ok(text.includes("旧 CLI 不认识该事件时会继续报红"));
+  for (const field of ["summary", "reason", "evidence"]) assert.ok(text.includes(field), `漂移事件缺 ${field}`);
+});
+
 test("AGENTS 模板对单流常驻架构/审查门禁，worktree 只在分流整节", () => {
   const text = template();
   assert.ok(text.includes("必须建立或审查长期 Architecture Baseline"));

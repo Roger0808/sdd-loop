@@ -272,7 +272,7 @@ sdd-loop check --json
 | `1` | 声明与仓库事实矛盾 |
 | `2` | 判据不可读，不给结论 |
 
-启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁。发现 Hotfix 文件时追加 H1–H5 检查；没有 Hotfix 文件时，现有文本、JSON、pi details 和退出码保持不变。
+启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁。分流仓库在 `review_completed` 记录本轮经审查的 `deliveryScope`，C10 关闭后只重算该范围，因此兄弟流交付不会让本流变红。若本流保护范围后来发生合法变化，Approver 可在核对原因与证据后追加 `closure_drift_accepted`；存量已关闭流在第一次接受时建立范围，已建立的范围不得缩小或替换。之后该范围再次变化仍会 fail closed。旧 CLI 不认识新事件，因此会继续报红而不是静默接受；分流指纹还会排除所有 Loop 控制与归档目录。发现 Hotfix 文件时追加 H1–H5 检查；没有 Hotfix 文件时，现有文本、JSON、pi details 和退出码保持不变。
 
 ### 条款口径
 

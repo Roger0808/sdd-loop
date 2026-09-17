@@ -11,7 +11,7 @@ import {
   readAuditDirectory,
   recordGovernanceEvent,
 } from "../src/governance/protocol.js";
-import { buildLoopCheckReport } from "../src/validation/loop-check.js";
+import { buildLoopCheckReport, buildRepoCheckReport } from "../src/validation/loop-check.js";
 
 const CLI = path.resolve(import.meta.dirname, "../scripts/sdd-loop.mjs");
 
@@ -77,6 +77,64 @@ function event(root, payload, { stream = null } = {}) {
 function statusMeta(root) {
   const text = fs.readFileSync(path.join(root, "docs/loops/status.md"), "utf8");
   return readFrontMatter(text).meta;
+}
+
+function streamsRepo(names) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-governance-streams-"));
+  for (const name of names) {
+    write(root, `docs/loops/${name}/status.md`, status({ gateStage: "verification" }));
+    write(root, `apps/${name}/index.js`, `export const stream = ${JSON.stringify(name)};\n`);
+    for (const stageName of ["requirements", "architecture", "specification", "tasks", "implementation", "verification"]) {
+      write(root, `docs/loops/${name}/loop-1/${stageName}.md`, stage(stageName === "verification" ? "draft" : "confirmed"));
+    }
+  }
+  git(root, ["init", "-q"]);
+  git(root, ["config", "user.name", "Test User"]);
+  git(root, ["config", "user.email", "t@example.com"]);
+  git(root, ["add", "docs"]);
+  git(root, ["commit", "-qm", "stream fixture"]);
+  return root;
+}
+
+function prepareReview(root, { stream = null } = {}) {
+  const options = { stream };
+  event(root, { type: "governance_migrated", role: "architect", stage: "verification", reason: "存量 Loop 已进入 Verification", summary: "迁移" }, options);
+  for (const [extension, extra] of Object.entries({
+    testing: { outcome: "PASS", evidence: "tests pass" },
+    pbt: { outcome: "PASS", evidence: "seeded", caseCount: 100, seed: 7 },
+    security: { outcome: "N/A", reason: "无安全边界变化" },
+    resiliency: { outcome: "N/A", reason: "无运行时依赖" },
+  })) event(root, { type: "extension_evaluated", role: "implementer", extension, summary: extension, ...extra }, options);
+  event(root, { type: "architecture_reconciled", role: "implementer", stage: "verification", evidence: "baseline checked", summary: "对账" }, options);
+}
+
+function closeLoop(root, { stream = null, deliveryScope = null } = {}) {
+  const options = { stream };
+  prepareReview(root, options);
+  event(root, {
+    type: "review_completed",
+    role: "reviewer",
+    stage: "verification",
+    outcome: "READY_FOR_HUMAN_REVIEW",
+    evidence: "read-only review",
+    summary: "审查",
+    ...(stream ? { deliveryScope: deliveryScope ?? [`apps/${stream}`] } : {}),
+  }, options);
+  event(root, { type: "human_signed", role: "approver", stage: "verification", summary: "签署" }, options);
+
+  const loopRoot = stream ? `docs/loops/${stream}` : "docs/loops";
+  const archiveRoot = stream ? `docs/archive/${stream}` : "docs/archive";
+  for (const stageName of ["requirements", "architecture", "specification", "tasks", "implementation", "verification"]) {
+    const file = path.join(root, loopRoot, `loop-1/${stageName}.md`);
+    fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace(/status: (?:confirmed|draft)/, "status: archived"));
+  }
+  fs.mkdirSync(path.join(root, archiveRoot), { recursive: true });
+  fs.renameSync(path.join(root, loopRoot, "loop-1"), path.join(root, archiveRoot, "loop-1-done"));
+  const statusPath = path.join(root, loopRoot, "status.md");
+  fs.writeFileSync(statusPath, fs.readFileSync(statusPath, "utf8")
+    .replace("activeLoop: 1", "activeLoop: null")
+    .replace("lastClosedLoop: null", "lastClosedLoop: 1"));
+  event(root, { type: "loop_closed", role: "approver", stage: "verification", summary: "关闭" }, options);
 }
 
 test("stage approve 停在 awaiting-continue，后续独立 continue 才推进 nextPhase", () => {
@@ -292,6 +350,177 @@ test("AI Review 指纹、人工签署与关闭事件形成完整门禁", () => {
   assert.equal(statusMeta(root).gateState, "closed");
   const closed = buildLoopCheckReport(root);
   assert.equal(closed.ok, true, JSON.stringify(closed.problems, null, 2));
+});
+
+test("已关闭 Loop 的漂移只能由 Approver 以当前交付指纹明确接受", () => {
+  const root = repo({ gateStage: "verification" });
+  closeLoop(root);
+  write(root, "src/later.js", "export const later = 1;\n");
+  assert.ok(buildLoopCheckReport(root).problems.some((problem) => problem.detail.includes("Loop 关闭后")));
+
+  assert.throws(
+    () => event(root, { type: "closure_drift_accepted", role: "approver", summary: "接受漂移", evidence: "src/later.js" }),
+    /必须说明接受漂移的 reason/,
+  );
+  assert.throws(
+    () => event(root, { type: "closure_drift_accepted", role: "approver", summary: "接受漂移", reason: "后续合法交付" }),
+    /必须在 evidence 中列出/,
+  );
+  event(root, {
+    type: "closure_drift_accepted",
+    role: "approver",
+    summary: "接受已关闭 Loop 之后的合法交付",
+    reason: "这是后续独立范围的已审交付",
+    evidence: "核对 src/later.js，不修改原 Loop 归档和签署事实",
+  });
+  assert.equal(buildLoopCheckReport(root).ok, true);
+  assert.throws(
+    () => event(root, {
+      type: "closure_drift_accepted", role: "approver", summary: "重复接受", reason: "重复", evidence: "相同交付",
+    }),
+    /最近一次关闭\/接受时一致/,
+  );
+
+  write(root, "src/later-again.js", "export const laterAgain = 2;\n");
+  assert.ok(buildLoopCheckReport(root).problems.some((problem) => problem.detail.includes("Loop 关闭后")));
+});
+
+test("closure_drift_accepted 不能在 Loop 关闭前预先记录", () => {
+  const root = repo({ gateStage: "verification" });
+  assert.throws(
+    () => event(root, {
+      type: "closure_drift_accepted",
+      role: "approver",
+      summary: "预先放行未来变化",
+      reason: "错误预授权",
+      evidence: "尚无变化",
+    }),
+    /只能追加到已经关闭并归档的 Loop/,
+  );
+});
+
+test("分流 READY review 必须声明本轮真实 deliveryScope", () => {
+  const root = streamsRepo(["maker"]);
+  prepareReview(root, { stream: "maker" });
+  assert.throws(
+    () => event(root, {
+      type: "review_completed",
+      role: "reviewer",
+      stage: "verification",
+      outcome: "READY_FOR_HUMAN_REVIEW",
+      evidence: "read-only review",
+      summary: "漏掉交付范围",
+    }, { stream: "maker" }),
+    /必须提供非空 deliveryScope/,
+  );
+  assert.throws(
+    () => event(root, {
+      type: "review_completed",
+      role: "reviewer",
+      stage: "verification",
+      outcome: "READY_FOR_HUMAN_REVIEW",
+      evidence: "read-only review",
+      summary: "危险范围",
+      deliveryScope: ["../outside"],
+    }, { stream: "maker" }),
+    /不是安全的仓库相对路径/,
+  );
+  assert.throws(
+    () => event(root, {
+      type: "review_completed",
+      role: "reviewer",
+      stage: "verification",
+      outcome: "READY_FOR_HUMAN_REVIEW",
+      evidence: "read-only review",
+      summary: "空范围",
+      deliveryScope: ["apps/not-a-real-stream"],
+    }, { stream: "maker" }),
+    /没有匹配任何 Git 已知文件/,
+  );
+  assert.throws(
+    () => event(root, {
+      type: "review_completed",
+      role: "reviewer",
+      stage: "verification",
+      outcome: "READY_FOR_HUMAN_REVIEW",
+      evidence: "read-only review",
+      summary: "控制目录",
+      deliveryScope: ["docs/loops/maker"],
+    }, { stream: "maker" }),
+    /不能覆盖 Loop 控制或归档目录/,
+  );
+  assert.throws(
+    () => event(root, {
+      type: "review_completed",
+      role: "reviewer",
+      stage: "verification",
+      outcome: "READY_FOR_HUMAN_REVIEW",
+      evidence: "read-only review",
+      summary: "通配符",
+      deliveryScope: ["apps/maker/**"],
+    }, { stream: "maker" }),
+    /不支持通配符/,
+  );
+});
+
+test("旧分流 Loop 可在首次漂移接受时补录 deliveryScope，之后不再受兄弟范围影响", () => {
+  const root = repo({ gateStage: "verification" });
+  closeLoop(root);
+
+  fs.mkdirSync(path.join(root, "docs/loops/maker"), { recursive: true });
+  fs.renameSync(path.join(root, "docs/loops/status.md"), path.join(root, "docs/loops/maker/status.md"));
+  fs.mkdirSync(path.join(root, "docs/archive/maker"), { recursive: true });
+  fs.renameSync(path.join(root, "docs/archive/loop-1-done"), path.join(root, "docs/archive/maker/loop-1-done"));
+  write(root, "apps/maker/index.js", "export const maker = 1;\n");
+  assert.equal(buildRepoCheckReport(root).ok, false);
+
+  event(root, {
+    type: "closure_drift_accepted",
+    role: "approver",
+    summary: "接受存量 Loop 漂移并建立保护范围",
+    reason: "旧关闭事件没有 deliveryScope",
+    evidence: "核对 apps/maker 为本 Loop 的实际交付范围",
+    deliveryScope: ["apps/maker"],
+  }, { stream: "maker" });
+  assert.equal(buildRepoCheckReport(root).ok, true);
+
+  write(root, "apps/another-stream/index.js", "export const another = 1;\n");
+  assert.equal(buildRepoCheckReport(root).ok, true, "兄弟流范围变化不应再让 maker 变红");
+  write(root, "apps/maker/changed.js", "export const changed = 2;\n");
+  assert.equal(buildRepoCheckReport(root).ok, false, "maker 自己的保护范围变化仍必须报 C10");
+});
+
+test("分流只校验本轮 deliveryScope，兄弟流推进不会让已关闭 Loop 变红", () => {
+  const root = streamsRepo(["maker", "storage-service"]);
+  closeLoop(root, { stream: "maker" });
+  closeLoop(root, { stream: "storage-service" });
+  assert.equal(buildRepoCheckReport(root).ok, true);
+
+  write(root, "apps/maker/change.js", "export const changed = true;\n");
+  let report = buildRepoCheckReport(root);
+  assert.equal(report.problemCount, 1, "maker 自己的交付漂移只能让 maker 报 C10");
+  assert.equal(report.streams.find((entry) => entry.name === "maker").report.ok, false);
+  assert.equal(report.streams.find((entry) => entry.name === "storage-service").report.ok, true);
+
+  const acceptance = {
+    type: "closure_drift_accepted",
+    role: "approver",
+    summary: "接受其他流的合法交付",
+    reason: "已核对为独立范围",
+    evidence: "apps/maker/change.js；不涉及当前流归档",
+  };
+  event(root, acceptance, { stream: "maker" });
+  report = buildRepoCheckReport(root);
+  assert.equal(report.ok, true, JSON.stringify(report, null, 2));
+  assert.throws(
+    () => event(root, { ...acceptance, deliveryScope: ["apps/storage-service"] }, { stream: "maker" }),
+    /deliveryScope 不能在关闭后被缩小或替换/,
+  );
+
+  write(root, "apps/storage-service/change.js", "export const storageChanged = true;\n");
+  report = buildRepoCheckReport(root);
+  assert.equal(report.streams.find((entry) => entry.name === "maker").report.ok, true);
+  assert.equal(report.streams.find((entry) => entry.name === "storage-service").report.ok, false);
 });
 
 test("PBT PASS 缺 seed 或样本数时拒绝记录，而没有 PBT 库不构成 N/A 理由", () => {

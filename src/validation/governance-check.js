@@ -7,9 +7,11 @@ import {
   GOVERNANCE_STATES,
   GOVERNANCE_VERSION,
   REVIEW_OUTCOMES,
+  fingerprintDelivery,
   fingerprintFile,
   fingerprintRepo,
   governanceRoleField,
+  normalizeDeliveryScope,
   readAuditDirectory,
   scanProjectExtensions,
   splitList,
@@ -29,6 +31,14 @@ function fail(entry, detail, extra = {}) {
 
 function latest(events, type) {
   return events.filter((event) => event.type === type).at(-1) ?? null;
+}
+
+function eventDeliveryScope(event) {
+  try {
+    return { ok: true, scope: normalizeDeliveryScope(event?.payload?.deliveryScope) };
+  } catch {
+    return { ok: false, scope: null };
+  }
 }
 
 function activeLoopDir(scan) {
@@ -69,7 +79,7 @@ function fingerprintCurrentCode(scan, audit) {
  * 治理检查只在 status.md 显式选择 governanceVersion 后启用。
  * 旧仓库不走到这里，C1-C5 的报告形状和输出因此保持原样。
  */
-export function buildGovernanceChecks(scan) {
+export function buildGovernanceChecks(scan, { stream = null } = {}) {
   const meta = scan.status.meta;
   if (isBlank(meta.governanceVersion)) return [];
 
@@ -278,11 +288,48 @@ export function buildGovernanceChecks(scan) {
     if (!closed || closed.codeFingerprint !== meta.gateFingerprint) {
       fail(c10, "gateState 是 closed，但缺少当前指纹对应的 loop_closed 事件。", { file: scan.status.path });
     }
-    const currentDelivery = fingerprintRepo(scan.repoRoot, {
+    const reviewScope = eventDeliveryScope(review);
+    const currentClosedDelivery = fingerprintDelivery(scan.repoRoot, {
       statusRel: scan.status.path,
-      excludePrefixes: [path.dirname(scan.convention.statusFile), scan.convention.archiveDir],
+      archiveDir: scan.convention.archiveDir,
+      stream,
+      deliveryScope: reviewScope.scope,
     });
-    if (!closed?.deliveryFingerprint || closed.deliveryFingerprint !== currentDelivery || review?.deliveryFingerprint !== currentDelivery) {
+    const acceptances = audit.events.filter((event) => event.type === "closure_drift_accepted");
+    const acceptance = acceptances.at(-1) ?? null;
+    const acceptanceScopes = acceptances.map(eventDeliveryScope);
+    const establishedScope = reviewScope.scope ?? acceptanceScopes.find((entry) => entry.scope)?.scope ?? null;
+    const scopesConsistent = acceptanceScopes.every((entry) => (
+      entry.ok
+      && (!entry.scope || JSON.stringify(entry.scope) === JSON.stringify(establishedScope))
+    ));
+    const currentAcceptedDelivery = acceptance
+      ? fingerprintDelivery(scan.repoRoot, {
+        statusRel: scan.status.path,
+        archiveDir: scan.convention.archiveDir,
+        stream,
+        deliveryScope: establishedScope,
+      })
+      : null;
+    const closedDeliveryValid = Boolean(
+      closed?.deliveryFingerprint && closed.deliveryFingerprint === review?.deliveryFingerprint,
+    );
+    const originalDeliveryUnchanged = Boolean(
+      closedDeliveryValid && reviewScope.ok && closed.deliveryFingerprint === currentClosedDelivery,
+    );
+    const acceptedCurrentDelivery = Boolean(
+      acceptance
+      && closedDeliveryValid
+      && reviewScope.ok
+      && scopesConsistent
+      && (!stream || establishedScope)
+      && acceptance.codeFingerprint === meta.gateFingerprint
+      && acceptance.deliveryFingerprint === currentAcceptedDelivery
+      && acceptance.timestamp >= closed?.timestamp
+      && String(acceptance.payload?.reason ?? "").trim()
+      && String(acceptance.payload?.evidence ?? "").trim(),
+    );
+    if (!originalDeliveryUnchanged && !acceptedCurrentDelivery) {
       fail(c10, "Loop 关闭后代码、配置或长期文档与签署时不一致。", { file: scan.status.path });
     }
   }
