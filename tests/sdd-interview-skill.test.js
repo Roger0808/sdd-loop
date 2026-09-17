@@ -107,6 +107,37 @@ test("「不许编」在场：抽不出来要明说，编出来的结论会被�
   assert.ok(text.includes("抽不出"), "「明说抽不出什么」的要求丢了");
 });
 
+test("Requirements 深挖是每轮只提示一次的可选节奏，不新增命令、站或外部 skill 依赖", () => {
+  const text = skillText();
+  const start = text.indexOf("## Requirements 的可选深挖模式");
+  assert.ok(start !== -1, "可选深挖模式丢了");
+  const section = text.slice(start, text.indexOf("\n## ", start + 1));
+
+  assert.ok(section.includes("标准访谈"), "没有保留低摩擦的标准访谈选项");
+  assert.ok(section.includes("深挖访谈"), "没有给用户明确的深挖选项");
+  assert.ok(section.includes("只提示一次"), "模式选择会在每站重复打断用户");
+  assert.ok(section.includes("不再重复询问"), "用户已指定节奏时仍会被再次询问");
+  assert.ok(section.includes("不要求用户另装外部 skill"), "深挖被做成了外部安装依赖");
+  assert.ok(section.includes("不新增命令、提问站或第二份访谈文件"), "可选节奏不该膨胀成新工作流或真相源");
+  assert.ok(section.includes("不写进 requirements.md"), "交互偏好被写成了业务需求");
+  assert.ok(section.includes("不单独记 `question_answered`"), "交互偏好被误记成治理决策");
+});
+
+test("Requirements 深挖吸收 grilling 的问答协议，但不越过事实、阶段和确认边界", () => {
+  const text = skillText();
+  const start = text.indexOf("## Requirements 的可选深挖模式");
+  const section = text.slice(start, text.indexOf("\n## ", start + 1));
+
+  assert.ok(section.includes("一次只问一个问题并等待回答"), "深挖退化成了一次倾倒整批问题");
+  assert.ok(section.includes("每题给推荐答案和理由"), "用户仍要面对没有抓手的空白问题");
+  assert.ok(section.includes("事实自己查，决定交给用户"), "事实和产品决策的责任边界丢了");
+  assert.ok(section.includes("只深挖 Requirements"), "深挖越界替 Architecture/Specification 做决定");
+  assert.ok(section.includes("随时可以收束"), "用户没有低成本退出深挖的出口");
+  assert.ok(section.includes("停止深挖不等于该站完成"), "退出交互模式被误当成站级完成");
+  assert.ok(section.includes("不等于 requirements.md 已确认"), "退出深挖被误当成人工审批");
+  assert.ok(section.includes("不得自动进入 Architecture"), "深挖完成绕过了 Requirements 审批门禁");
+});
+
 // 已有文档导入是访谈的另一个入口（抽取的来源可以是文档而不只是对话）。
 // 四条规矩每条都对应一种真实损坏，所以逐条锁原话：只锁「出现过关键词」
 // 会让人把规矩删了锁还绿着。
