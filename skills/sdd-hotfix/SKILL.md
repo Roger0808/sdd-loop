@@ -1,6 +1,6 @@
 ---
 name: sdd-hotfix
-description: 在已有 SDD Loop 仓库中走独立、单文档的 Hotfix 通道。用户说“/sdd-hotfix”“/sdd hotfix”“做个 hotfix”“紧急修复但不想走完整 Loop”时使用。首次只读勘察并展示一次范围/风险/reviewer 确认卡；确认后隔离实施、验证、独立 AI Review、人工签署和归档。不是普通 Loop 的跳阶段开关。
+description: 在已有 SDD Loop 仓库中走独立、单文档的 Hotfix 通道。用户说“/sdd-hotfix”“/sdd hotfix”“做个 hotfix”“紧急修复但不想走完整 Loop”时使用。首次只读勘察并展示一次范围/风险/reviewer 确认卡；确认后隔离实施、验证、独立 AI Review、测试环境部署实测、人工签署和归档。不是普通 Loop 的跳阶段开关。
 ---
 
 # SDD Hotfix
@@ -84,11 +84,19 @@ sdd-loop _governance record --hotfix HF-YYYYMMDD-NN --event-json <tmp-file> [--s
 - `current-subagent`：当前 Agent 启动一个独立、只读、不得修复的 review subagent；当前 Agent 本体不得自审。
 - `external-agent`：先让用户确认具体 Agent，再给出包含基线、范围、diff、验证与风险的只读 handoff；不得自动降级为自审。
 
-Review 只允许 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED`、`NOT_REVIEWABLE_SAFELY`。记录 `review_completed` 时同时带 `reviewRoute` 和证据。后两种结论停下说明问题；修复后重新验证并重新审查。前一种把完整审查结论写入第 7 节，然后停在人工签署。
+Review 只允许 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED`、`NOT_REVIEWABLE_SAFELY`。记录 `review_completed` 时同时带 `reviewRoute` 和证据。后两种结论停下说明问题；修复后重新验证并重新审查。前一种把完整审查结论写入第 7 节，然后进入测试环境部署与人工实测。
 
-## 4. 人工签署与归档
+## 4. 测试环境部署与人工实测
 
-1. 向用户展示当前 `fixFingerprint`、变更、四项证据、架构影响、回滚和 AI Review，请用户对**当前指纹**明确签署。不得替用户确认。
+人工确认发生在测试环境实测之后，不是审查包展示之后：
+
+1. `READY_FOR_HUMAN_REVIEW` 后先把修复部署到测试环境（遵循项目部署惯例；目标分支不是部署工具要求的分支时走手工等效流程），完成冒烟验证并把结果写进交付说明。没有可部署的测试环境时如实说明并跳过本节。
+2. 部署后向用户展示当前 `fixFingerprint`、变更、四项证据、架构影响、回滚、AI Review 结论和冒烟结果，请用户在测试环境实测。不得用冒烟通过代替人工实测。
+3. 实测发现问题：返回实施，修复后重新验证、重新审查、重新部署（指纹随之更新）。
+
+## 5. 人工签署与归档
+
+1. 用户实测通过后，请用户对**当前指纹**明确签署。不得替用户确认，不得把「用户没有反对」当作签署。
 2. 用户签署后记录 `human_signed`，更新第 8 节和 `hotfixState: human-approved`。
 3. 用 `git mv` 把 Hotfix 文件及其整个审计目录迁到同一流的归档位置，设置 `status: archived`；保持 ID、文件名和审计内容不变。
 4. 在归档位置记录 `hotfix_closed`，它会把 `hotfixState` 置为 `closed`。重跑 `sdd-loop check`。
