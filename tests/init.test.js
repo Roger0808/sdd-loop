@@ -33,7 +33,7 @@ const CLI = path.join(REPO_ROOT, "scripts/sdd-loop.mjs");
  * 本包要装的 skill。**测试自己写的一份期望值**，不从 package.json 也不从被测代码读——
  * 两边各写一份，才锁得住「有人顺手把一个 skill 从 pi.skills 里删了/漏登记了」。
  */
-const SKILLS = ["sdd-full-test", "sdd-hotfix", "sdd-init", "sdd-interview", "sdd-review", "sdd-upgrade"];
+const SKILLS = ["sdd-debug", "sdd-full-test", "sdd-hotfix", "sdd-init", "sdd-interview", "sdd-review", "sdd-upgrade"];
 
 /**
  * 造一个假 home。参数决定哪几个宿主「装在这台机器上」。

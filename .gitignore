@@ -22,4 +22,5 @@ skills/*
 !skills/sdd-upgrade/
 !skills/sdd-review/
 !skills/sdd-hotfix/
+!skills/sdd-debug/
 !skills/sdd-full-test/

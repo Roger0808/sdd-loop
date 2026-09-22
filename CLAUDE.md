@@ -11,13 +11,14 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 3. **治理事件**：只在项目显式启用 `governanceVersion: 1` 后，由 Skills 通过内部 `_governance record` 追加分片审计、校验角色/指纹并推进审批门禁。它不替人做语义审批，也不自动归档。
 4. **全维测试证据**：通过内部 `_full_test` 校验项目自带的测试插件清单与证据包协议。它只验证机器事实与完整性，不替 reviewer 或人类作 Verification 判定；要证明包未被整体重写，必须用包外保存的 manifest SHA-256 锚定。
 
-外加六份纯提示词 skill：
+外加七份工作流 skill：
 
 - `skills/sdd-init/`：把一个仓库初始化成按 SDD Loop 运行（AGENTS.md 门禁规则 + CLAUDE.md 转引 + status.md），每个仓库一次。**AGENTS.md 是承重墙**——`loop-check.js` 执行的就是它写的那条「矛盾时停下请人确认」，没有它 check 是在判一个仓库从没声明过的约定。所以模板逐字复制，不许现写。
 - `skills/sdd-interview/`：七站提问 + 收官拆任务（冷启动仪器，每个产品一次）。**「七」是提问站数**；拆任务勘察为主、不算提问站，编进站数会让人以为还有一轮问题要答。
 - `skills/sdd-upgrade/`：**已经**在跑 SDD Loop 的仓库的条款对齐、形态迁移（单流 → 分流）和 AGENTS Candidate 审计。删除、移动、合并必须逐项授权。
 - `skills/sdd-review/`：实施后的架构反向回写、change surface、AI Review 前的人类选择与只读 subagent/跨 Agent handoff、人工审查包；不修复、不替人签字。
 - `skills/sdd-hotfix/`：独立 Hotfix 文档、隔离实施、验证与只读审查通道；不占用普通 Loop，也不替人签字。
+- `skills/sdd-debug/`：人工测试驱动的连续排查、修复与测试环境部署；“开始收口”后反写 Debug 路由 Hotfix、按最终代码更新长期架构并显式豁免独立 Review。
 - `skills/sdd-full-test/`：调度项目自带的测试插件，执行 preflight / run / teardown，收集可锚定证据包；不自动修改 Verification 门禁。
 
 四者的分界：init 建约定不产业务内容，interview 产前四份内容，upgrade 只改已有约定，review 在实施后收口但不替人工确认。
@@ -63,6 +64,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | `node scripts/sdd-loop.mjs check --repo <dir>` | 状态对账 CLI。 |
 | `node scripts/sdd-loop.mjs guide --type <doc.clause> [--repo <dir>]` | 口径字典 CLI。 |
 | `node scripts/sdd-loop.mjs capabilities --require governance@1 --host <宿主>` | 治理环境能力预检；只读，协议、打包资源或宿主 Skill 安装缺失时退出 2。 |
+| `node scripts/sdd-loop.mjs capabilities --require debug@1 --host <宿主>` | Debug 回溯收口能力预检；验证治理依赖、Hotfix 判据与宿主 `sdd-debug` Skill。 |
 | `node scripts/sdd-loop.mjs capabilities --require full-test@1 --host <宿主>` | Full-Test 协议与宿主 Skill 能力预检。 |
 | `node scripts/sdd-loop.mjs _governance record --event-json <tmp> [--repo <dir>]` | Skills 内部事件入口；不作为用户工作流命令宣传。 |
 | `node scripts/sdd-loop.mjs _full_test verify-manifest --file <path>` | Skills 内部插件清单校验入口；证据包用 `verify-bundle --dir <dir> [--manifest-sha256 <包外锚点>]`。 |
@@ -80,12 +82,13 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | 治理 | `src/governance/protocol.js` + `src/validation/governance-check.js` | 事件格式、身份/角色、脱敏、分片哈希链、代码/文档指纹和 C6-C10；只有状态文件显式带治理版本时启用。 |
 | 安装计划 | `src/install/plan.js` | `init -g` 的**唯一判定源**：只算不写。OpenClaw 默认 state 复用 `~/.agents/skills`，自定义 `OPENCLAW_STATE_DIR` 写入该 state 的 `skills/`；Hermes 解析 config 并只追加 `skills.external_dirs`。 |
 | CLI | `scripts/sdd-loop.mjs` + `scripts/lib/` | `check` / `guide` / `capabilities` / `init` 四个用户子命令和 Skills 内部 `_governance` / `_hotfix` / `_full_test` 入口；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。 |
-| pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd`、init、upgrade、review、hotfix、full-test 工作流路由；未知子命令只返回用法。 |
+| pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd`、init、upgrade、review、hotfix、debug、full-test 工作流路由；未知子命令只返回用法。 |
 | Skill · init | `skills/sdd-init/` | SKILL.md + AGENTS/CLAUDE/Baseline 模板 + `AGENTS.md.CHANGELOG.md` 与 `AGENTS.md.AUDIT.md`。模板不用会被宿主自动读走的真名。 |
 | Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编）。Requirements 每轮开局可选标准或内建的深挖问答，深挖不依赖外部 skill、可随时退出且不改变审批门禁。第 0 站**先定流、再捞 backlog**——顺序反了就筛不出该摆哪几条 |
 | Skill · 升级 | `skills/sdd-upgrade/SKILL.md` | 老仓库的条款对齐、形态迁移和逐项授权的 AGENTS Candidate 审计。 |
 | Skill · 审查 | `skills/sdd-review/SKILL.md` | 实施指纹、架构回写、change surface、人类选择 reviewer、只读 subagent/跨 Agent handoff 和人工审查门禁。 |
 | Skill · Hotfix | `skills/sdd-hotfix/SKILL.md` | 独立文档、隔离分支、验证、独立只读审查与人工签署。 |
+| Skill · Debug | `skills/sdd-debug/SKILL.md` | 调试期不建文档或 Review；收口时回溯 Hotfix、架构反写、人工测试验收与显式 Review 豁免。 |
 | Skill · Full-Test | `skills/sdd-full-test/SKILL.md` | 测试插件生命周期、五态结果、严格 plan/result 绑定与包外摘要锚定；只产证据，不替 reviewer 判定。 |
 | 首页 | `README.md`（英文，默认）+ `README_zh.md`（简体中文） | **改一份必须改另一份**。`tests/readme.test.js` 对两份跑同一批锁，数字与名字（站数 / 条款类型 / 宿主 / 子命令）一律从真相源推导，只有「用什么写法表达这个数」按语言分 |
 

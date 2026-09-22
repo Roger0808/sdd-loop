@@ -69,6 +69,7 @@ test("扩展面：恰好两个工具 + /sdd 命令（12 工具 → 2 工具）",
   assert.deepEqual([...tools.keys()].sort(), ["sdd_loop_check", "sdd_spec_guide"]);
   assert.ok(commands.has("sdd"), "/sdd 命令没注册");
   assert.ok(commands.has("sdd-hotfix"), "/sdd-hotfix 命令没注册");
+  assert.ok(commands.has("sdd-debug"), "/sdd-debug 命令没注册");
   assert.ok(commands.has("sdd-full-test"), "/sdd-full-test 命令没注册");
 });
 
@@ -81,6 +82,19 @@ test("/sdd hotfix 与 /sdd-hotfix 都加载 sdd-hotfix，且先只读确认", { 
     assert.match(message, /sdd-hotfix skill/);
     assert.match(message, /首次响应只做只读勘察/);
     assert.match(message, /等我一次确认/);
+  }
+});
+
+test("/sdd debug 与 /sdd-debug 都加载 sdd-debug，调试期不建文档也不 Review", { skip }, async () => {
+  const { commands, sent } = await loadExtension();
+  await commands.get("sdd").handler("debug", {});
+  await commands.get("sdd-debug").handler("", {});
+  assert.equal(sent.length, 2);
+  for (const message of sent) {
+    assert.match(message, /sdd-debug skill/);
+    assert.match(message, /不创建文档/);
+    assert.match(message, /开始收口/);
+    assert.match(message, /Review waived/);
   }
 });
 

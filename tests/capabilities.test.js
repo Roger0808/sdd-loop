@@ -45,6 +45,9 @@ test("capabilities --json 给出可机读 governance@1 与完整打包资源", (
   assert.equal(report.capabilities.hotfix.available, true);
   assert.deepEqual(report.capabilities.hotfix.supportedProtocolVersions, [1]);
   assert.deepEqual(report.capabilities.hotfix.checks, ["H1", "H2", "H3", "H4", "H5"]);
+  assert.equal(report.capabilities.debug.available, true);
+  assert.deepEqual(report.capabilities.debug.supportedProtocolVersions, [1]);
+  assert.deepEqual(report.capabilities.debug.checks, ["H1", "H2", "H3", "H4", "H5"]);
   assert.equal(report.capabilities["full-test"].available, true);
   assert.deepEqual(report.capabilities["full-test"].supportedProtocolVersions, [1]);
   assert.deepEqual(report.capabilities["full-test"].missingResources, []);
@@ -69,6 +72,17 @@ test("full-test@1 独立验证 sdd-full-test，新增 Skill 不使 governance@1 
   const missingFullTest = run(["--require", "full-test@1", "--host", "agents"], { home });
   assert.equal(missingFullTest.code, EXIT_UNUSABLE);
   assert.match(missingFullTest.err, /sdd-full-test/);
+});
+
+test("debug@1 独立验证 sdd-debug，且不改变 governance@1 或 hotfix@1 的依赖", () => {
+  const home = installedAgentsHome();
+  assert.equal(run(["--require", "debug@1", "--host", "agents"], { home }).code, EXIT_OK);
+  fs.unlinkSync(path.join(home, ".agents", "skills", "sdd-debug"));
+  assert.equal(run(["--require", "governance@1", "--host", "agents"], { home }).code, EXIT_OK);
+  assert.equal(run(["--require", "hotfix@1", "--host", "agents"], { home }).code, EXIT_OK);
+  const missingDebug = run(["--require", "debug@1", "--host", "agents"], { home });
+  assert.equal(missingDebug.code, EXIT_UNUSABLE);
+  assert.match(missingDebug.err, /sdd-debug/);
 });
 
 test("--require governance@1 同时验证协议与当前宿主 Skill 安装", () => {

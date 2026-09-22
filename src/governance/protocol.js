@@ -63,6 +63,7 @@ const EVENT_ROLES = Object.freeze({
   closure_drift_accepted: ["approver"],
   hotfix_authorized: ["requester", "product"],
   hotfix_closed: ["approver"],
+  debug_closed: ["approver"],
 });
 
 function sha256(value) {
@@ -580,12 +581,36 @@ function validatePayload(payload) {
     if (!String(payload.input ?? "").trim()) throw new Error("hotfix_authorized 必须记录用户确认原文 input。");
     if (!["current-subagent", "external-agent"].includes(payload.reviewRoute)) throw new Error("hotfix_authorized 必须记录 reviewRoute。");
   }
+  if (payload.type === "debug_closed") {
+    if (!String(payload.input ?? "").trim()) throw new Error("debug_closed 必须记录用户开始收口的原始 input。");
+    if (!String(payload.evidence ?? "").trim()) throw new Error("debug_closed 必须记录最终测试、部署、人工验收与架构对账 evidence。");
+  }
 }
 
 function hotfixTransition(target, payload) {
   const type = payload.type;
   const current = fingerprintCurrentCode(target);
   const audit = readAuditPath(target.auditDir);
+  const debugRoute = target.meta.route === "debug";
+  if (debugRoute) {
+    if (type !== "debug_closed") throw new Error(`Debug Hotfix 只接受 debug_closed，不能记录 ${type}。`);
+    if (!current) throw new Error("当前代码指纹不可用，不能关闭 Debug Hotfix。");
+    if (target.hotfixLocation !== "archive" || target.meta.status !== "archived") {
+      throw new Error("Debug 收口文档必须直接写入归档 Hotfix 目录并设置 status: archived。");
+    }
+    if (target.meta.hotfixState !== "human-approved") throw new Error("Debug 收口前必须记录 hotfixState: human-approved。");
+    if (target.meta.acceptanceMode !== "manual-test" || target.meta.reviewStatus !== "waived") {
+      throw new Error("Debug 收口必须明确 acceptanceMode: manual-test 与 reviewStatus: waived。");
+    }
+    if (audit.events.some((event) => event.type === "debug_closed" && event.context?.hotfix === target.hotfix)) {
+      throw new Error("Debug Hotfix 已关闭，不能重复记录 debug_closed。");
+    }
+    return {
+      fields: { hotfixState: "closed", fixFingerprint: current, updatedAt: new Date().toISOString() },
+      codeFingerprint: current,
+    };
+  }
+  if (type === "debug_closed") throw new Error("只有 route: debug 的回溯 Hotfix 才能记录 debug_closed。");
   if (type === "hotfix_authorized") {
     if (target.meta.status !== "confirmed" || target.meta.hotfixState !== "implementation") throw new Error("Hotfix 授权时必须是 confirmed/implementation。");
     if (payload.reviewRoute !== target.meta.reviewRoute) throw new Error("事件的 reviewRoute 与 Hotfix 启动选择不一致。");
