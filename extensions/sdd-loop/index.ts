@@ -15,6 +15,7 @@
  *   /sdd upgrade 加载 sdd-upgrade skill（升级条款、分流形态或 AGENTS 审计）
  *   /sdd review  加载 sdd-review skill（架构回写 + AI/人工审查收口）
  *   /sdd hotfix 与 /sdd-hotfix 加载 sdd-hotfix skill（独立单文档修复通道）
+ *   /sdd debug 与 /sdd-debug 加载 sdd-debug skill（人工测试驱动的连续调试通道）
  *   /sdd full-test 与 /sdd-full-test 加载 sdd-full-test skill（全维度测试调度与证据采集）
  */
 
@@ -261,13 +262,18 @@ export default function (pi: ExtensionAPI) {
 		"baseBranch/baseCommit，以及 current-subagent 或 external-agent reviewer 选择；等我一次确认后，再创建独立 Hotfix 文档和隔离分支，" +
 		"连续实施、验证并完成独立只读 AI Review。不要修改普通 Loop 的 activeLoop，也不要替我做最终人工签署。";
 
+	const DEBUG_MESSAGE =
+		"请加载 sdd-debug skill，进入人工测试驱动的连续调试：先只读记录当前 Git/工作区基线和测试环境，不创建文档、不选择 reviewer、不要求范围卡；" +
+		"随后根据我的每次手测反馈排查、修复、做定向验证，并按本次已有授权由 AI 或我部署测试环境。" +
+		"在我说“开始收口”前不要生成 Hotfix 或做独立 Review；收口时按最终代码更新长期架构、反写 route: debug 的归档 Hotfix，明确 Review waived，并记录 debug_closed。";
+
 	const FULL_TEST_MESSAGE =
 		"请加载 sdd-full-test skill，作为证据执行器调度项目的测试插件：" +
 		"探测项目配置的测试插件清单（优先尊重显式传入的清单路径或项目约定，不硬编码项目目录约定），让我选择 profile 或 suites，" +
 		"做 preflight 探活并在 finally 路径执行 teardown 平账清理，最后生成带 manifest.sha256 的 Evidence Bundle，并把清单摘要记录到包外作为复核锚点，" +
 		"并整理 verification.md 的待审补丁与 extensionClaims。不要替我下通过结论，也不要自动确认门禁。";
 
-	const SDD_USAGE = "用法：/sdd [init|upgrade|review|hotfix|full-test]；不带子命令时开始访谈。";
+	const SDD_USAGE = "用法：/sdd [init|upgrade|review|hotfix|debug|full-test]；不带子命令时开始访谈。";
 
 	pi.registerCommand("sdd", {
 		description: "SDD Loop：访谈，或用 init / upgrade / review 进入初始化、升级和审查",
@@ -289,6 +295,7 @@ export default function (pi: ExtensionAPI) {
 				upgrade: UPGRADE_MESSAGE,
 				review: REVIEW_MESSAGE,
 				hotfix: HOTFIX_MESSAGE,
+				debug: DEBUG_MESSAGE,
 			};
 			return pi.sendUserMessage(messages[sub] ?? SDD_USAGE);
 		},
@@ -299,6 +306,14 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args: any, _ctx: any) => {
 			if (String(args ?? "").trim()) return pi.sendUserMessage("用法：/sdd-hotfix（不带参数）。");
 			return pi.sendUserMessage(HOTFIX_MESSAGE);
+		},
+	});
+
+	pi.registerCommand("sdd-debug", {
+		description: "SDD Debug：人工测试驱动的连续排查、修复与测试环境部署，最后回溯收口",
+		handler: async (args: any, _ctx: any) => {
+			if (String(args ?? "").trim()) return pi.sendUserMessage("用法：/sdd-debug（不带参数）。");
+			return pi.sendUserMessage(DEBUG_MESSAGE);
 		},
 	});
 

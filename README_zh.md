@@ -130,6 +130,21 @@ stateDiagram-v2
 
 每个 Hotfix 只有一份 `hotfix-YYYYMMDD-NN.md`。单流放在 `docs/loops/hotfix/`，分流放在 `docs/loops/<stream>/hotfix/`；关闭后迁到对应 `docs/archive[/<stream>]/hotfix/`。编号按每条流、每天同时扫描活跃与归档目录后递增。Testing 必须 PASS，其余三项必须 PASS 或有明确 N/A 理由；架构受影响时必须回写长期 Architecture Baseline。
 
+### Debug 人工测试通道
+
+`/sdd-debug`（pi 也支持 `/sdd debug`）用于测试环境中的连续人工点测和修复。它不占用或推进普通 Loop，也不要求先写范围卡、Hotfix 文档或选择 Reviewer。
+
+该通道要求状态文件已有 `governanceVersion: 1` 和 `roleApprover` 映射，`/sdd-debug` 会在第一次修复前检查。旧项目可使用 `/sdd upgrade`：AGENTS 条款对齐动作会在你确认候选后补入 Debug 规则；如果项目仍缺治理配置，则明确报告“规则已对齐、通道尚未启用”，直到你另外选择治理升级动作。
+
+```text
+记录 Git/工作区基线 → 用户手测反馈 → AI 排查修复 → 定向测试
+→ AI 或用户部署测试环境 → 用户继续手测（循环）
+→ 用户说“开始收口” → 最终测试/构建/冒烟 → 按最终代码更新长期架构
+→ 反写并归档 route: debug 的 Hotfix → debug_closed
+```
+
+Debug 不因关联修改超出原 Loop 的预测改动面而反复请求范围确认；只有新的产品行为选择、生产操作、破坏性数据变更、Secrets/权限/安全策略、外部费用或无法安全回滚的共享环境操作才停下请求决定。收口文档必须明确 `acceptanceMode: manual-test`、`reviewStatus: waived` 和 `MANUAL_TEST_ACCEPTED_NO_INDEPENDENT_REVIEW`，不能把人工点测伪装成 `READY_FOR_HUMAN_REVIEW`。用户的“开始收口”同时是生成回溯记录和关闭的授权，不再索要第二次确认。
+
 ### Full-Test 证据执行器
 
 `/sdd-full-test`（pi 也支持 `/sdd full-test`）用于调度项目自备的测试插件并采集可校验证据包。它定位于“证据执行器”，不替 Reviewer 下通过结论，而是生成 `manifest.sha256`，并要求将该清单的 SHA-256 另存到包外，供人工和 AI Review 后续锚定复核。
@@ -146,6 +161,7 @@ stateDiagram-v2
 
 - 没有 AGENTS.md：sdd-init 按单流/分流和项目事实筛选规则，直接生成结构化最终版本。
 - 已有 AGENTS.md：sdd-init 或 sdd-upgrade 只在 `/tmp` 生成 `AGENTS.candidate.md` 和逐项报告，不静默覆盖仓库文件。
+- 已初始化项目运行 `/sdd upgrade` 的“条款对齐”后，会从 `AGENTS.md.CHANGELOG.md` 发现 Debug 常驻条款；用户确认候选后补入项目 `AGENTS.md`，不会静默覆盖项目自有规则。
 - 删除、移动和合并必须逐项授权；模型、权限、MCP 和宿主配置不在审计范围内。
 
 分类：`KEEP_SDD_CANONICAL`、`KEEP_PROJECT_SPECIFIC`、`DUPLICATED`、`STALE`、`MODEL_OR_HOST_SPECIFIC`、`BELONGS_IN_AGENT_CONFIG`、`CANONICAL_ELSEWHERE`、`UNCLEAR`。
@@ -156,7 +172,7 @@ stateDiagram-v2
 
 要求 Node ≥ 20。
 
-**完整安装：六个 Skill + `capabilities` / `check` / `guide` CLI**
+**完整安装：七个 Skill + `capabilities` / `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -173,7 +189,7 @@ npx skills@latest add Roger0808/sdd-loop -g
 
 | 落点 | 安装方式 |
 |---|---|
-| 内置 Skill | [sdd-init](skills/sdd-init)、[sdd-interview](skills/sdd-interview)、[sdd-upgrade](skills/sdd-upgrade)、[sdd-review](skills/sdd-review)、[sdd-hotfix](skills/sdd-hotfix)、[sdd-full-test](skills/sdd-full-test) |
+| 内置 Skill | [sdd-init](skills/sdd-init)、[sdd-interview](skills/sdd-interview)、[sdd-upgrade](skills/sdd-upgrade)、[sdd-review](skills/sdd-review)、[sdd-hotfix](skills/sdd-hotfix)、[sdd-debug](skills/sdd-debug)、[sdd-full-test](skills/sdd-full-test) |
 | Claude Code | `~/.claude/skills/` |
 | Agent Skills 宿主 | `~/.agents/skills/` — Codex、Gemini CLI、GitHub Copilot、Cursor、Windsurf、OpenCode、OpenClaw、Kimi Code、Antigravity、Factory Droid、Roo Code |
 | Hermes Agent | 通过其 Skills 配置登记 |
@@ -217,6 +233,7 @@ npx skills@latest update -g
 ```bash
 sdd-loop capabilities --require governance@1 --host agents
 sdd-loop capabilities --require hotfix@1 --host agents
+sdd-loop capabilities --require debug@1 --host agents
 sdd-loop capabilities --require full-test@1 --host agents
 ```
 
@@ -228,11 +245,12 @@ sdd-loop capabilities --require full-test@1 --host agents
 |---|---|
 | `sdd-loop capabilities --require governance@1 --host <宿主>` | Fail closed 检查 CLI、治理资源及当前宿主的 Skill 安装是否支持协议 1 |
 | `sdd-loop capabilities --require hotfix@1 --host <宿主>` | 检查 Hotfix 协议、治理依赖及当前宿主是否发现 `sdd-hotfix` |
+| `sdd-loop capabilities --require debug@1 --host <宿主>` | 检查 Debug 回溯收口协议、治理依赖及当前宿主是否发现 `sdd-debug` |
 | `sdd-loop capabilities --require full-test@1 --host <宿主>` | 检查 Full-Test 协议资源及当前宿主是否发现 `sdd-full-test` |
 | `sdd-loop check` | 对账状态声明与仓库事实 |
 | `sdd-loop guide --type <doc.clause>` | 查询条款口径和现有编号族 |
 
-### 六个工作流命令
+### 七个工作流命令
 
 ```mermaid
 flowchart TD
@@ -244,6 +262,7 @@ flowchart TD
     B -- 运行全维度测试并收集证据 --> T["/sdd-full-test 或 /sdd full-test · sdd-full-test"]
     B -- 已验证实现进入收口 --> R["/sdd review · sdd-review"]
     B -- 独立紧急修复 --> H["/sdd-hotfix 或 /sdd hotfix · sdd-hotfix"]
+    B -- 人工点测连续调试 --> D["/sdd-debug 或 /sdd debug · sdd-debug"]
 ```
 
 | pi 命令 | Skill 名称 / 斜杠别名 | 什么时候用 | 产出 |
@@ -254,6 +273,7 @@ flowchart TD
 | `/sdd full-test`、`/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | 需要运行项目测试套件采集可校验证据包 | 执行测试、收集证据包与可在包外锚定的 SHA-256 清单，提议 `verification.md` 待审事实与扩展索赔 |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation 和自动化验证已经完成 | 架构对账、记录 change surface、AI 审查并准备人工审查包 |
 | `/sdd hotfix`、`/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | 用户选择不推进普通 Loop 的独立紧急修复 | 一份 Hotfix 文档、独立审计、验证、AI Review 与人工签署 |
+| `/sdd debug`、`/sdd-debug` | `sdd-debug` / `/sdd-debug` | 测试环境中反复手测、修复和部署，完成后再统一收口 | 调试期无阶段文档和独立 Review；收口时反写 Debug Hotfix、更新长期架构并记录人工验收与 Review 豁免 |
 
 pi 使用第一列；其他宿主调用 Skill 名称或斜杠别名。
 
@@ -272,7 +292,7 @@ sdd-loop check --json
 | `1` | 声明与仓库事实矛盾 |
 | `2` | 判据不可读，不给结论 |
 
-启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁。分流仓库在 `review_completed` 记录本轮经审查的 `deliveryScope`，C10 关闭后只重算该范围，因此兄弟流交付不会让本流变红。若本流保护范围后来发生合法变化，Approver 可在核对原因与证据后追加 `closure_drift_accepted`；存量已关闭流在第一次接受时建立范围，已建立的范围不得缩小或替换。之后该范围再次变化仍会 fail closed。旧 CLI 不认识新事件，因此会继续报红而不是静默接受；分流指纹还会排除所有 Loop 控制与归档目录。发现 Hotfix 文件时追加 H1–H5 检查；没有 Hotfix 文件时，现有文本、JSON、pi details 和退出码保持不变。
+启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁。分流仓库在 `review_completed` 记录本轮经审查的 `deliveryScope`，C10 关闭后只重算该范围，因此兄弟流交付不会让本流变红。若本流保护范围后来发生合法变化，Approver 可在核对原因与证据后追加 `closure_drift_accepted`；存量已关闭流在第一次接受时建立范围，已建立的范围不得缩小或替换。之后该范围再次变化仍会 fail closed。旧 CLI 不认识新事件，因此会继续报红而不是静默接受；分流指纹还会排除所有 Loop 控制与归档目录。发现 Hotfix 文件时追加 H1–H5 检查；`route: debug` 由同一组检查验证人工验收、最终证据和 Review 豁免，并拒绝混入标准 Hotfix 的 Review/签署事件。没有 Hotfix 文件时，现有文本、JSON、pi details 和退出码保持不变。
 
 ### 条款口径
 

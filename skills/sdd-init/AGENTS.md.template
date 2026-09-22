@@ -121,6 +121,13 @@ Requirements
 - Testing 必须 PASS；PBT、Security、Resiliency 必须 PASS 或有具体理由的 N/A。`architectureImpact: updated` 时必须回写 Architecture Baseline 并记录 `architecture_reconciled`。
 - 启动时选择的只读 AI reviewer 路径不得中途静默更换。只有 `READY_FOR_HUMAN_REVIEW` 后，用户才能对当前修复指纹签署；随后把文档和对应审计目录移入对应的归档 Hotfix 目录并记录 `hotfix_closed`。
 
+## Debug 人工测试通道
+
+- `/sdd-debug`（pi 为 `/sdd debug`）只能加载 `sdd-debug` skill 启动；先运行 `sdd-loop capabilities --require debug@1 --host <当前宿主>`，并确认当前状态文件已有 `governanceVersion: 1` 与 `roleApprover` 映射。缺失时必须在开始修复前 fail-fast，先走 `/sdd upgrade` 的治理升级，不得拖到“开始收口”才发现无法关闭。Debug 与普通 Loop 并行，不修改 `activeLoop`、`nextLoop`、`gateStage` 或 `gateState`。
+- Debug 启动时只记录 Git/工作区基线和测试环境，不创建文档、不选择 reviewer、不做范围确认。人工测试期间按“用户反馈 → AI 排查修复 → 定向测试 → 测试环境部署 → 用户复测”循环；为解决当前问题所需的跨模块修改不因超出原 Loop 的预测改动面而另设门禁。
+- Debug 只有遇到新的产品行为选择、生产环境操作、破坏性或不可逆数据变更、Secrets/权限/安全策略变化、外部费用或无法安全回滚的共享环境操作时，才停止相关动作请求用户决定；未经明确授权仍不得提交、推送或部署生产环境。
+- 用户完成手测后说“开始收口”即授权冻结当前版本、执行最终测试/构建/冒烟、按最终代码更新长期 Architecture Baseline，并在归档 Hotfix 目录反写一份 `route: debug` 文档、记录 `debug_closed` 后关闭，不再索要第二次确认。Debug 必须明确 `acceptanceMode: manual-test`、`reviewStatus: waived` 和 `MANUAL_TEST_ACCEPTED_NO_INDEPENDENT_REVIEW`；不得伪造 `review_completed`、`human_signed`、`hotfix_closed` 或 `READY_FOR_HUMAN_REVIEW`。
+
 **Loop 编号是流内编号，跨流重号是正常的。**`maker/loop-1` 和 `admin-console/loop-1` 是两个不同的 Loop，裸写「Loop 1」从此有歧义——引用一律带流名，写成 `admin-console/loop-2`。这条只管 **Loop 编号**：条款编号（REQ-001、BND-002 之类）不受影响，它们永远在同一条流的文档族内部互相引用，不存在跨流引用，给每个编号都套上流名是纯噪音。<!-- 单流：删掉这一段 -->
 
 ## 流的划分与跨流改动

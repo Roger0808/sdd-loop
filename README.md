@@ -130,6 +130,21 @@ Read-only launch card (scope + risks + reviewer) → one user confirmation → i
 
 Each Hotfix has one `hotfix-YYYYMMDD-NN.md`. Single-stream repositories use `docs/loops/hotfix/`; split repositories use `docs/loops/<stream>/hotfix/`. Closed Hotfixes move to the corresponding `docs/archive[/<stream>]/hotfix/`. Numbering is per stream and day, scanning both active and archived files. Testing must PASS; the other three extensions must PASS or provide a specific N/A reason. Architecture-impacting fixes must reconcile the long-lived Architecture Baseline.
 
+### Manual-testing Debug channel
+
+`/sdd-debug` (pi also accepts `/sdd debug`) supports repeated manual testing and repair in a test environment. It neither occupies nor advances the ordinary Loop, and it does not require an up-front scope card, Hotfix document, or Reviewer choice.
+
+The channel requires `governanceVersion: 1` and a `roleApprover` mapping. `/sdd-debug` checks these before the first fix. For an older repository, use `/sdd upgrade`: the AGENTS clause-alignment action adds the Debug rules only after you approve the candidate, while a repository that still lacks governance is reported as “rules aligned, channel not enabled” until you also choose the governance upgrade action.
+
+```text
+Capture the Git/worktree baseline → user reports a manual-test failure → AI diagnoses and fixes → focused checks
+→ AI or user deploys to the test environment → user tests again (repeat)
+→ user says “start closeout” → final tests/build/smoke → update long-lived architecture from final code
+→ backfill and archive a route: debug Hotfix → debug_closed
+```
+
+Debug does not repeatedly request scope approval when a necessary related change exceeds the ordinary Loop's predicted change surface. It pauses only for a new product-behavior decision, production operation, destructive data change, Secrets/permission/security-policy change, external cost, or shared-environment action that cannot be safely rolled back. Closeout must state `acceptanceMode: manual-test`, `reviewStatus: waived`, and `MANUAL_TEST_ACCEPTED_NO_INDEPENDENT_REVIEW`; manual testing must not be presented as `READY_FOR_HUMAN_REVIEW`. The user's “start closeout” authorizes both the retrospective record and closure, with no second confirmation.
+
 ### Full-Test Evidence Runner
 
 `/sdd-full-test` (pi also accepts `/sdd full-test`) executes project test plugins and collects verifiable evidence bundles. It acts strictly as an evidence runner, never deciding verification verdicts, and produces bundles with `manifest.sha256`; record that manifest's SHA-256 outside the bundle to anchor later human and AI Review.
@@ -146,6 +161,7 @@ Discover plugin manifest (tests/sdd/plugin.yaml or custom path) → validate sdd
 
 - Without an existing AGENTS.md, sdd-init selects the applicable single/split-project rules and writes the final structured file directly.
 - With an existing AGENTS.md, sdd-init or sdd-upgrade writes `AGENTS.candidate.md` and an itemized report under `/tmp`; it never silently overwrites the repository file.
+- In an initialized project, `/sdd upgrade` clause alignment discovers the resident Debug clauses through `AGENTS.md.CHANGELOG.md`; after the user approves the candidates, it adds them to the project's `AGENTS.md` without replacing project-specific rules.
 - Deletion, movement and merging require item-by-item approval. Model, permission, MCP and host configuration are out of scope.
 
 Classifications: `KEEP_SDD_CANONICAL`, `KEEP_PROJECT_SPECIFIC`, `DUPLICATED`, `STALE`, `MODEL_OR_HOST_SPECIFIC`, `BELONGS_IN_AGENT_CONFIG`, `CANONICAL_ELSEWHERE`, `UNCLEAR`.
@@ -156,7 +172,7 @@ Audit verdicts: `RECOMMEND_ADOPTION`, `NEEDS_REVISION`, `KEEP_CURRENT`, `NOT_TES
 
 Requires Node ≥ 20.
 
-**Full: six Skills + `capabilities` / `check` / `guide` CLI**
+**Full: seven Skills + `capabilities` / `check` / `guide` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -173,7 +189,7 @@ npx skills@latest add Roger0808/sdd-loop -g
 
 | Target | Installation |
 |---|---|
-| Packaged Skills | [sdd-init](skills/sdd-init), [sdd-interview](skills/sdd-interview), [sdd-upgrade](skills/sdd-upgrade), [sdd-review](skills/sdd-review), [sdd-hotfix](skills/sdd-hotfix), [sdd-full-test](skills/sdd-full-test) |
+| Packaged Skills | [sdd-init](skills/sdd-init), [sdd-interview](skills/sdd-interview), [sdd-upgrade](skills/sdd-upgrade), [sdd-review](skills/sdd-review), [sdd-hotfix](skills/sdd-hotfix), [sdd-debug](skills/sdd-debug), [sdd-full-test](skills/sdd-full-test) |
 | Claude Code | `~/.claude/skills/` |
 | Agent Skills hosts | `~/.agents/skills/` — Codex, Gemini CLI, GitHub Copilot, Cursor, Windsurf, OpenCode, OpenClaw, Kimi Code, Antigravity, Factory Droid, Roo Code |
 | Hermes Agent | registered through its skills configuration |
@@ -217,6 +233,7 @@ Restart the host or open a new session after installation.
 ```bash
 sdd-loop capabilities --require governance@1 --host agents
 sdd-loop capabilities --require hotfix@1 --host agents
+sdd-loop capabilities --require debug@1 --host agents
 sdd-loop capabilities --require full-test@1 --host agents
 ```
 
@@ -228,11 +245,12 @@ Run this before working in a governance-enabled repository. Set `--host` to `cla
 |---|---|
 | `sdd-loop capabilities --require governance@1 --host <host>` | Fail-closed check that the CLI, governance resources and host Skill installation support protocol 1 |
 | `sdd-loop capabilities --require hotfix@1 --host <host>` | Check the Hotfix protocol, governance dependency and host discovery of `sdd-hotfix` |
+| `sdd-loop capabilities --require debug@1 --host <host>` | Check the Debug retrospective-closeout protocol, governance dependency and host discovery of `sdd-debug` |
 | `sdd-loop capabilities --require full-test@1 --host <host>` | Check the Full-Test protocol resources and host discovery of `sdd-full-test` |
 | `sdd-loop check` | Reconcile status declarations with repository facts |
 | `sdd-loop guide --type <doc.clause>` | Show clause guidance and existing ID families |
 
-### Six workflow commands
+### Seven workflow commands
 
 ```mermaid
 flowchart TD
@@ -244,6 +262,7 @@ flowchart TD
     B -- Run full test suite & collect evidence --> T["/sdd-full-test or /sdd full-test · sdd-full-test"]
     B -- Close verified implementation --> R["/sdd review · sdd-review"]
     B -- Independent urgent fix --> H["/sdd-hotfix or /sdd hotfix · sdd-hotfix"]
+    B -- Repeated manual-test debugging --> D["/sdd-debug or /sdd debug · sdd-debug"]
 ```
 
 | pi command | Skill name / slash alias | Use it when | Result |
@@ -254,6 +273,7 @@ flowchart TD
 | `/sdd full-test`, `/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | Project test suites need execution to collect a verifiable evidence bundle | Executes tests, builds evidence bundle with an externally anchorable SHA-256 manifest, proposes `verification.md` facts and extension claims |
 | `/sdd review` | `sdd-review` / `/sdd-review` | Implementation and automated verification are complete | Reconciles architecture, records change surface, runs AI review and prepares human review |
 | `/sdd hotfix`, `/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | The user chooses an urgent fix that must not advance the ordinary Loop | One Hotfix document, isolated audit, verification, AI Review and human sign-off |
+| `/sdd debug`, `/sdd-debug` | `sdd-debug` / `/sdd-debug` | Manual testing, repair and test-environment deployment repeat until the user starts closeout | No stage documents or independent Review while debugging; closeout backfills a Debug Hotfix, updates long-lived architecture, and records manual acceptance plus the Review waiver |
 
 pi uses the first column; other hosts invoke the Skill name or slash alias.
 
@@ -272,7 +292,7 @@ sdd-loop check --json
 | `1` | declarations contradict repository facts |
 | `2` | evidence is unreadable; no verdict |
 
-Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. In split-stream repositories, `review_completed` records the Loop's reviewed `deliveryScope`; C10 later fingerprints only that scope, so delivery in a sibling stream does not invalidate the closed Loop. If its own protected scope later changes legitimately, an Approver can append `closure_drift_accepted` with the reviewed reason and evidence; legacy closed streams establish their scope during this first acceptance, and established scopes cannot be narrowed or replaced. Any later change inside that scope fails closed again. Older CLIs remain red rather than silently accepting the new event. Loop control and archive directories are excluded from split-stream delivery fingerprints. When Hotfix files exist, H1–H5 are appended; without Hotfix files, existing text, JSON, pi details and exit codes stay unchanged.
+Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. In split-stream repositories, `review_completed` records the Loop's reviewed `deliveryScope`; C10 later fingerprints only that scope, so delivery in a sibling stream does not invalidate the closed Loop. If its own protected scope later changes legitimately, an Approver can append `closure_drift_accepted` with the reviewed reason and evidence; legacy closed streams establish their scope during this first acceptance, and established scopes cannot be narrowed or replaced. Any later change inside that scope fails closed again. Older CLIs remain red rather than silently accepting the new event. Loop control and archive directories are excluded from split-stream delivery fingerprints. When Hotfix files exist, H1–H5 are appended; `route: debug` uses those checks for manual acceptance, final evidence and the Review waiver, while rejecting standard-Hotfix Review/sign-off events. Without Hotfix files, existing text, JSON, pi details and exit codes stay unchanged.
 
 ### Clause guide
 

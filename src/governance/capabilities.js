@@ -27,6 +27,14 @@ const HOTFIX_RESOURCES = Object.freeze([
   "skills/sdd-hotfix/SKILL.md",
 ]);
 
+const DEBUG_RESOURCES = Object.freeze([
+  "scripts/lib/governance.mjs",
+  "scripts/lib/hotfix.mjs",
+  "src/hotfix/layout.js",
+  "src/validation/hotfix-check.js",
+  "skills/sdd-debug/SKILL.md",
+]);
+
 const FULL_TEST_RESOURCES = Object.freeze([
   "scripts/lib/full-test.mjs",
   "src/full-test/protocol.js",
@@ -36,6 +44,7 @@ const FULL_TEST_RESOURCES = Object.freeze([
 
 const GOVERNANCE_SKILLS = Object.freeze(["sdd-init", "sdd-interview", "sdd-upgrade", "sdd-review"]);
 const HOTFIX_SKILLS = Object.freeze(["sdd-hotfix"]);
+const DEBUG_SKILLS = Object.freeze(["sdd-debug"]);
 const FULL_TEST_SKILLS = Object.freeze(["sdd-full-test"]);
 
 function summarizeHostReadiness(packageRoot, { host, home, env, requiredSkills }) {
@@ -108,6 +117,13 @@ export function buildCapabilityReport(packageRoot, options = {}) {
       return true;
     }
   });
+  const missingDebugResources = DEBUG_RESOURCES.filter((rel) => {
+    try {
+      return !fs.statSync(path.join(root, rel)).isFile();
+    } catch {
+      return true;
+    }
+  });
   const missingFullTestResources = FULL_TEST_RESOURCES.filter((rel) => {
     try {
       return !fs.statSync(path.join(root, rel)).isFile();
@@ -140,6 +156,13 @@ export function buildCapabilityReport(packageRoot, options = {}) {
         engineeringExtensions: [...BUILTIN_EXTENSIONS],
         missingResources: [...missingResources, ...missingHotfixResources].filter((value, index, all) => all.indexOf(value) === index),
       },
+      debug: {
+        available: missingDebugResources.length === 0 && missingResources.length === 0,
+        supportedProtocolVersions: [1],
+        checks: ["H1", "H2", "H3", "H4", "H5"],
+        engineeringExtensions: [],
+        missingResources: [...missingResources, ...missingDebugResources].filter((value, index, all) => all.indexOf(value) === index),
+      },
       "full-test": fullTestCapability,
     },
   };
@@ -150,12 +173,14 @@ export function buildCapabilityReport(packageRoot, options = {}) {
   };
   const hostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: GOVERNANCE_SKILLS });
   const hotfixHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: HOTFIX_SKILLS });
+  const debugHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: DEBUG_SKILLS });
   const fullTestHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: FULL_TEST_SKILLS });
   if (hostReadiness) {
     report.hostReadiness = hostReadiness;
     report.hostReadinessByCapability = {
       governance: hostReadiness,
       hotfix: hotfixHostReadiness,
+      debug: debugHostReadiness,
       "full-test": fullTestHostReadiness,
     };
   }
