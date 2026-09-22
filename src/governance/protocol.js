@@ -263,7 +263,7 @@ function roleEmails(meta, role) {
 }
 
 function allowedRoles(type, stage) {
-  if (type === "stage_approved") return APPROVER_ROLES[stage] ?? [];
+  if (type === "stage_approved" || type === "stage_reconfirmed") return APPROVER_ROLES[stage] ?? [];
   if (type === "continue_authorized") return GOVERNANCE_ROLES;
   return EVENT_ROLES[type] ?? [];
 }
@@ -672,6 +672,12 @@ function transition(target, payload) {
     if (stage !== target.meta.gateStage) throw new Error(`当前门禁是 ${target.meta.gateStage}，不能审批 ${stage}。`);
     const fingerprint = requireConfirmedStage(target, stage);
     return { fields: { gateState: "awaiting-continue", gateFingerprint: fingerprint }, artifactFingerprint: fingerprint };
+  }
+  if (type === "stage_reconfirmed") {
+    // 重签已 confirmed 的阶段文档（修订后重新确认），不推进门禁、不代表 Review 通过。
+    if (!payload.stage) throw new Error("stage_reconfirmed 必须显式指明 stage。");
+    const fingerprint = requireConfirmedStage(target, stage);
+    return { fields: {}, artifactFingerprint: fingerprint };
   }
   if (type === "continue_authorized") {
     if (target.meta.gateState !== "awaiting-continue") throw new Error("当前不在 awaiting-continue，不能继续。");
