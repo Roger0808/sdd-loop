@@ -1,46 +1,47 @@
 # sdd-loop
 
-**A file-based workflow for AI-assisted software delivery.** It helps an agent and a team agree on requirements, keep implementation evidence, and close a reviewed change without losing the decisions made along the way.
+**From an idea to a reviewed delivery, with decisions kept in the repository.** sdd-loop gives AI agents and people a shared path through planning, implementation, testing, and approval.
 
 ![MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Node](https://img.shields.io/badge/Node-%E2%89%A520-brightgreen.svg) ![Hosts](https://img.shields.io/badge/hosts-14-8A2BE2)
 
 <a href="README.md">English</a> · <a href="README_zh.md">简体中文</a>
 
-## Choose the work
+## The AI-DLC lifecycle
 
-| Route | Use it for | What happens |
-|---|---|---|
-| **Loop** | A feature or planned change | A 7-station interview shapes `requirements.md`, `architecture.md`, `specification.md`, and `tasks.md`; implementation and verification complete the six-document Loop. |
-| **Hotfix** | A focused urgent repair | An independent, single-document change beside the ordinary Loop. |
-| **Debug** | Repeated deploy → manual test → fix cycles | Brief notes for each cycle; final evidence and approval when the candidate is stable. |
-
-For new governance v2 work, pi's `/sdd` command (or the `sdd-route` Skill on another host) **recommends** a route and explains why. A person confirms the route before it starts. Projects can replace each route's [workflow definition](workflows/loop/workflow.md); a stream can override the project definition. The selected definition and hash are locked at start, so later configuration edits do not change a run already in progress.
-
-## How delivery moves
+[AWS AI-DLC](https://awslabs.github.io/aidlc-workflows/guide/04-phases-and-stages/) describes five phases and a feedback loop. The stages included in a particular run depend on its scope:
 
 ```mermaid
-flowchart TD
-    A[Request] --> B[Recommend route and confirm]
-    B --> C{Route}
-    C --> L[Loop · six stage documents]
-    C --> HF[Hotfix · one document]
-    C --> T[Debug · cycle log]
-    L --> D[Worktree Ready · implementation]
-    HF --> D
-    T --> D
-    D --> E[Deploy and manual-test cycles]
-    E --> F[Stable candidate · final tests]
-    F --> G[Architecture Reconciliation]
-    G --> REV[AI Review]
-    REV --> I[Human Review · sign-off]
-    I --> J[Archive and provenance check]
+flowchart LR
+    A[Initialization] --> B[Ideation]
+    B --> C[Inception]
+    C --> D[Construction]
+    D --> E[Operation]
+    E -->|Feedback| B
 ```
 
-The diagram shows a typical v2 sequence; each route's locked dependency graph controls the exact order. The Loop keeps six stage documents: `requirements.md`, `architecture.md`, `specification.md`, `tasks.md`, `implementation.md`, and `verification.md`. Requirements need explicit approval. Split repositories use a separate branch and worktree per `stream + Loop`. Under governance v1, each stage approval stops at `awaiting_continue` until a later user message continues it; worktree-local `audit/*.jsonl` shards preserve the hash-chained record.
+| Phase | Main question |
+|---|---|
+| **Initialization** | Is the workspace and its state ready? |
+| **Ideation** | What is the intent, scope, and reason to proceed? |
+| **Inception** | What requirements, design, work units, and delivery plan will guide the build? |
+| **Construction** | Can the solution be built and tested in reviewable pieces? |
+| **Operation** | Can it be deployed, observed, supported, and improved from feedback? |
 
-Under **governance v2**, manual testing adds short records of the issue, fix scope, focused test, deployment, and retest. New product decisions are confirmed when made. After the candidate stabilizes, only affected document clauses and downstream evidence are revisited. Final verification records applicable Testing, PBT, Security, and Resiliency evidence; PBT evidence includes a deterministic `seed` when relevant. Architecture reconciliation and Review attach to that candidate. Before AI Review, a **human choice** selects a read-only `subagent` or a named Agent with a `handoff`. Review outcomes include `READY_FOR_HUMAN_REVIEW`, `CHANGES_REQUIRED`, and `NOT_REVIEWABLE_SAFELY`.
+AI-DLC checks artifact consistency and traceability at phase boundaries before downstream work proceeds. People approve the decisions that need judgment.
 
-The workflow definition decides whether Review is required or waived and whether sign-off comes from the submitter, a named role, is optional, or is waived. Source receipts use the actual changed files: unrelated sibling-stream edits do not invalidate this run; a shared-file edit needs focused tests and a delta Review. A closed run retains its historical receipt, so later changes to the same file belong to later deliveries. `sdd-loop provenance` checks that a commit range has an attributable delivery receipt.
+sdd-loop applies this intent-to-feedback path to repository work. It offers three routes, so a feature, urgent fix, and manual-testing session can each follow a fitting workflow.
+
+## Choose a workflow
+
+| Route | Use it for | Path |
+|---|---|---|
+| **Loop** | A feature or planned change | A 7-station interview produces `requirements.md`, `architecture.md`, `specification.md`, and `tasks.md`; implementation and verification complete the six-document Loop. |
+| **Hotfix** | A focused urgent repair | One independent repair document, followed by validation and acceptance. |
+| **Debug** | Repeated deployment and manual testing | Diagnose, fix, deploy, and retest until the result is ready for closeout. |
+
+Describe the task to pi's `/sdd` command or the `sdd-route` Skill on another host. It recommends a route with a reason; **you confirm the choice** before work starts. The project can choose the order of deployment, manual testing, verification, and review in its [workflow definition](workflows/loop/workflow.md).
+
+A Loop starts with a confirmed need, moves through design and implementation in an isolated worktree, then collects test and deployment evidence. The team reviews a stable candidate: AI Review examines the code, and Human Review records the acceptance decision. Feedback can start another Loop, Hotfix, or Debug session. The six stage documents are `requirements.md`, `architecture.md`, `specification.md`, `tasks.md`, `implementation.md`, and `verification.md`.
 
 ## Installation
 
@@ -55,11 +56,10 @@ sdd-loop init -g
 
 If the CLI is already installed, install only the Skills with `npx skills@latest add Roger0808/sdd-loop -g`. Restart the agent or open a new session after installation.
 
-Check that the current host has the resources for the governance version your project uses:
+Check that the current host has the workflow resources:
 
 ```bash
 sdd-loop capabilities --require governance@2 --host agents
-sdd-loop capabilities --require governance@1 --host agents
 ```
 
 Choose `--host` from `claude`, `agents`, `openclaw`, `hermes`, or `pi`:
@@ -83,14 +83,14 @@ sdd-loop workflow recommend --request-file /tmp/request.txt --repo .
 sdd-loop workflow show --route loop --repo .
 ```
 
-For a v2 run, set `governanceVersion: 2` in the project status file and confirm the recommended route. The agent then uses `sdd-loop workflow start`, `sdd-loop workflow record`, and `sdd-loop workflow close`; `close` moves the run into the locked archive directory and returns its new path. The CLI reads confirmation and event JSON from files so those inputs do not enter shell history.
+Once you confirm a route, the agent starts and tracks the work. Project setup for configurable routes is described in [`sdd-route`](skills/sdd-route/SKILL.md).
 
 ## Skills and commands
 
 | Ask for | Skill | Purpose |
 |---|---|---|
 | `/sdd init` | [`sdd-init`](skills/sdd-init) | Set up repository rules and status. |
-| `/sdd` | [`sdd-interview`](skills/sdd-interview), [`sdd-route`](skills/sdd-route) | Start or continue a Loop; recommend a v2 route and wait for confirmation. |
+| `/sdd` | [`sdd-interview`](skills/sdd-interview), [`sdd-route`](skills/sdd-route) | Start or continue work; recommend a route and wait for confirmation. |
 | `/sdd upgrade` | [`sdd-upgrade`](skills/sdd-upgrade) | Align an existing project's rules or split streams. |
 | `/sdd review` | [`sdd-review`](skills/sdd-review) | Reconcile the Architecture Baseline, prepare the AI Review and Human Review packet. |
 | `/sdd-hotfix` | [`sdd-hotfix`](skills/sdd-hotfix) | Run an independent urgent fix; pi also accepts `/sdd hotfix`. |
@@ -103,17 +103,16 @@ The CLI supplies six user commands:
 |---|---|
 | `sdd-loop check --repo <dir> [--stream <name>]` | Read-only comparison of status declarations and repository facts; exit `0` clean, `1` inconsistent, `2` unreadable. |
 | `sdd-loop guide --type specification.entity-table` | Clause guidance, existing ID families, and a repository example before writing. |
-| `sdd-loop capabilities --require governance@2 --host agents` | Verify CLI, rules, and installed host Skills. Other capabilities include `hotfix@1`, `debug@1`, and `full-test@1`. |
-| `sdd-loop workflow` (`recommend`, `show`, `start`, `record`, `close`) | Recommend a route, inspect its graph, then record a confirmed v2 run. |
-| `sdd-loop provenance check --base <base> --head <head>` | Classify changed files as `covered`, `drifted`, `unattributed`, or `ambiguous`; a delivery gate requires coverage. |
+| `sdd-loop capabilities --require governance@2 --host agents` | Verify CLI, rules, and installed host Skills. |
+| `sdd-loop workflow` (`recommend`, `show`, `start`, `record`, `close`) | Recommend a route, inspect its graph, and track confirmed work. |
+| `sdd-loop provenance check --base <base> --head <head>` | Check whether delivered code changes have matching review evidence. |
 | `sdd-loop init -g` | Install Skills and host integration; it does not initialize a project. |
 
-## Configuration and existing projects
+## Make it fit your project
 
-- Built-in definitions: [Loop](workflows/loop/workflow.md), [Hotfix](workflows/hotfix/workflow.md), [Debug](workflows/debug/workflow.md). Replace one completely at `docs/sdd/workflows/<route>/workflow.md`; a stream-specific `docs/sdd/workflows/<stream>/<route>/workflow.md` takes precedence. The validated dependency graph can put deployment before manual testing and final verification.
-- New work uses `governanceVersion: 2`. An active v1 run keeps its original stage and signature rules. `legacy_scope_reconciled` provides a targeted scope, test, and delta Review path for an active split-stream v1 Loop. For an old closed Loop whose Review source cannot be reconstructed, `legacy_baseline_established` records a one-time forward baseline and the limits of its historical evidence. Neither event invents an earlier approval.
-- An older CLI reports `governanceVersion: 2` as unsupported. Updating a project's rules with `sdd-upgrade` does not update the installed CLI or Skills: project rules **never auto-update tools**.
-- `AGENTS.md` remains the repository's gate. With an existing file, init or upgrade prepares a candidate and itemized audit instead of replacing it. Decisions such as `KEEP_SDD_CANONICAL` and `NOT_TESTABLE_SAFELY` are explained in [sdd-upgrade](skills/sdd-upgrade/SKILL.md).
+Start from the [Loop](workflows/loop/workflow.md), [Hotfix](workflows/hotfix/workflow.md), or [Debug](workflows/debug/workflow.md) workflow. A project can replace a route at `docs/sdd/workflows/<route>/workflow.md`; a stream can provide its own definition at `docs/sdd/workflows/<stream>/<route>/workflow.md`. Each definition sets stage dependencies, Review policy, and who signs. A route already in progress keeps the definition chosen at its start.
+
+`AGENTS.md` holds project rules. For an existing repository, `/sdd upgrade` prepares proposed rule changes for human review. It updates project conventions; installed tools are updated separately. Full governance contracts live in the [Skills](skills/sdd-init) and [maintainer architecture](CLAUDE.md).
 
 To update a full installation:
 
@@ -124,7 +123,7 @@ npm link
 sdd-loop init -g
 ```
 
-For a Skills-only installation, run `npx skills@latest update -g`. See the individual [Skills](skills/sdd-init) and [project architecture](CLAUDE.md) for the full gate and evidence contracts.
+For a Skills-only installation, run `npx skills@latest update -g`.
 
 ## License
 
