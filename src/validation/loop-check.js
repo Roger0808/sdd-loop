@@ -21,6 +21,7 @@ import { isBlank } from "../loop/front-matter.js";
 import { conventionForStream } from "../loop/convention.js";
 import { buildGovernanceChecks } from "./governance-check.js";
 import { buildHotfixChecks } from "./hotfix-check.js";
+import { buildWorkflowChecks } from "./workflow-check.js";
 
 const SEVERITY = Object.freeze({ unusable: "unusable", problem: "problem", advisory: "advisory" });
 
@@ -175,8 +176,10 @@ export function buildLoopCheckReport(repoRoot, overrides = {}, options = {}) {
     }
   }
 
-  const governanceChecks = buildGovernanceChecks(scan, options);
-  const hotfix = buildHotfixChecks(scan);
+  const governanceChecks = String(status.meta.governanceVersion) === "2"
+    ? buildWorkflowChecks(scan) : buildGovernanceChecks(scan, options);
+  const hotfix = String(status.meta.governanceVersion) === "2"
+    ? { checks: [], files: [], unusable: false } : buildHotfixChecks(scan);
   const checks = [c1, c2, c3, c4, c5, ...governanceChecks, ...hotfix.checks];
   const problems = [
     ...c2.findings,

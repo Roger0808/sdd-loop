@@ -12,6 +12,8 @@ import {
   recordGovernanceEvent,
 } from "../src/governance/protocol.js";
 import { buildLoopCheckReport, buildRepoCheckReport } from "../src/validation/loop-check.js";
+import { checkProvenance } from "../src/workflow/provenance.js";
+import { reconstructLegacyReceipt } from "../src/governance/legacy-receipt.js";
 
 const CLI = path.resolve(import.meta.dirname, "../scripts/sdd-loop.mjs");
 
@@ -352,11 +354,11 @@ test("AI Review 指纹、人工签署与关闭事件形成完整门禁", () => {
   assert.equal(closed.ok, true, JSON.stringify(closed.problems, null, 2));
 });
 
-test("已关闭 Loop 的漂移只能由 Approver 以当前交付指纹明确接受", () => {
+test("已关闭 Loop 校验历史签署快照，后续源码变化由后续交付负责", () => {
   const root = repo({ gateStage: "verification" });
   closeLoop(root);
   write(root, "src/later.js", "export const later = 1;\n");
-  assert.ok(buildLoopCheckReport(root).problems.some((problem) => problem.detail.includes("Loop 关闭后")));
+  assert.equal(buildLoopCheckReport(root).ok, true);
 
   assert.throws(
     () => event(root, { type: "closure_drift_accepted", role: "approver", summary: "接受漂移", evidence: "src/later.js" }),
@@ -382,7 +384,36 @@ test("已关闭 Loop 的漂移只能由 Approver 以当前交付指纹明确接�
   );
 
   write(root, "src/later-again.js", "export const laterAgain = 2;\n");
+  assert.equal(buildLoopCheckReport(root).ok, true);
+});
+
+test("旧归档源码无法从 Git 重建时只允许一次向前基线且不补造旧签署", () => {
+  const root = repo({ gateStage: "verification" });
+  write(root, "src/reviewed-untracked.js", "export const value = 1;\n");
+  closeLoop(root);
+  write(root, "src/reviewed-untracked.js", "export const value = 2;\n");
   assert.ok(buildLoopCheckReport(root).problems.some((problem) => problem.detail.includes("Loop 关闭后")));
+  const baseline = event(root, { type: "legacy_baseline_established", role: "approver", summary: "旧归档向前基线", reason: "Review 工作区包含未提交源码，无法历史重建", evidence: "逐项核对 src/reviewed-untracked.js 的变化并承认历史证据缺口" });
+  assert.match(baseline.event.historicalLimitation, /无法重建|未提交/);
+  assert.equal(buildLoopCheckReport(root).ok, true);
+  assert.throws(() => event(root, { type: "legacy_baseline_established", role: "approver", summary: "重复", reason: "重复", evidence: "重复" }), /只允许建立一次/);
+});
+
+test("提交区间溯源可复用可重建的 v1 历史 Review 快照", () => {
+  const root = repo({ gateStage: "verification" });
+  const base = git(root, ["rev-parse", "HEAD"]);
+  write(root, "src/delivered.js", "export const delivered = 1;\n");
+  git(root, ["add", "src/delivered.js"]);
+  git(root, ["commit", "-qm", "code for review"]);
+  closeLoop(root);
+  git(root, ["add", "docs"]);
+  git(root, ["commit", "-qm", "close loop"]);
+  const audit = readAuditDirectory(path.join(root, "docs/archive/loop-1-done"));
+  const review = audit.events.find((item) => item.type === "review_completed");
+  const reconstructed = reconstructLegacyReceipt(root, { review, statusRel: "docs/loops/status.md", archiveDir: "docs/archive" });
+  assert.equal(reconstructed.ok, true, JSON.stringify(reconstructed));
+  const result = checkProvenance(root, { base, head: git(root, ["rev-parse", "HEAD"]) });
+  assert.equal(result.rows.find((row) => row.path === "src/delivered.js")?.classification, "covered", JSON.stringify(result));
 });
 
 test("closure_drift_accepted 不能在 Loop 关闭前预先记录", () => {
@@ -472,7 +503,7 @@ test("旧分流 Loop 可在首次漂移接受时补录 deliveryScope，之后不
   fs.mkdirSync(path.join(root, "docs/archive/maker"), { recursive: true });
   fs.renameSync(path.join(root, "docs/archive/loop-1-done"), path.join(root, "docs/archive/maker/loop-1-done"));
   write(root, "apps/maker/index.js", "export const maker = 1;\n");
-  assert.equal(buildRepoCheckReport(root).ok, false);
+  assert.equal(buildRepoCheckReport(root).ok, true);
 
   event(root, {
     type: "closure_drift_accepted",
@@ -487,7 +518,7 @@ test("旧分流 Loop 可在首次漂移接受时补录 deliveryScope，之后不
   write(root, "apps/another-stream/index.js", "export const another = 1;\n");
   assert.equal(buildRepoCheckReport(root).ok, true, "兄弟流范围变化不应再让 maker 变红");
   write(root, "apps/maker/changed.js", "export const changed = 2;\n");
-  assert.equal(buildRepoCheckReport(root).ok, false, "maker 自己的保护范围变化仍必须报 C10");
+  assert.equal(buildRepoCheckReport(root).ok, true, "关闭后的 maker 变化应由后续交付溯源门禁检查");
 });
 
 test("分流只校验本轮 deliveryScope，兄弟流推进不会让已关闭 Loop 变红", () => {
@@ -521,6 +552,26 @@ test("分流只校验本轮 deliveryScope，兄弟流推进不会让已关闭 Lo
   report = buildRepoCheckReport(root);
   assert.equal(report.streams.find((entry) => entry.name === "maker").report.ok, true);
   assert.equal(report.streams.find((entry) => entry.name === "storage-service").report.ok, false);
+});
+
+test("进行中的 v1 分流可显式归属兄弟变更并补定向测试与差量 Review", () => {
+  const root = streamsRepo(["maker", "storage-service"]);
+  prepareReview(root, { stream: "maker" });
+  event(root, { type: "review_completed", role: "reviewer", stage: "verification", outcome: "READY_FOR_HUMAN_REVIEW", evidence: "first review", summary: "审查", deliveryScope: ["apps/maker"] }, { stream: "maker" });
+  write(root, "apps/storage-service/index.js", "export const stream = 'changed by sibling';\n");
+  let report = buildRepoCheckReport(root, {}, { stream: "maker" }).streams[0].report;
+  assert.ok(report.problems.some((problem) => problem.detail.includes("AI Review 后代码")));
+  assert.throws(() => event(root, {
+    type: "legacy_scope_reconciled", role: "reviewer", stage: "verification", summary: "差量核对", evidence: "maker 范围不变", targetedTest: "maker targeted PASS", deltaReview: "maker diff reviewed", deliveryScope: ["apps/maker"], deliveryFiles: ["apps/maker/index.js"],
+  }, { stream: "maker" }), /范围外变化必须逐一列明/);
+  event(root, {
+    type: "legacy_scope_reconciled", role: "reviewer", stage: "verification", summary: "差量核对", evidence: "storage-service 由兄弟流负责", targetedTest: "maker targeted PASS", deltaReview: "maker diff reviewed", deliveryScope: ["apps/maker"], deliveryFiles: ["apps/maker/index.js"], excludedChanges: ["apps/storage-service/index.js"],
+  }, { stream: "maker" });
+  report = buildRepoCheckReport(root, {}, { stream: "maker" }).streams[0].report;
+  assert.equal(report.ok, true, JSON.stringify(report.problems));
+  write(root, "apps/maker/index.js", "export const stream = 'shared changed';\n");
+  report = buildRepoCheckReport(root, {}, { stream: "maker" }).streams[0].report;
+  assert.ok(report.problems.some((problem) => problem.detail.includes("AI Review 后代码")));
 });
 
 test("PBT PASS 缺 seed 或样本数时拒绝记录，而没有 PBT 库不构成 N/A 理由", () => {

@@ -97,6 +97,10 @@ Requirements
 
 ## 治理、角色与审计
 
+**新工作默认治理 v2。**本节下方以 `governance@1`、`stage_approved`、`continue_authorized` 和 `deliveryScope` 为名的旧规则只适用于未迁移的 v1 工作；不得用它们重释已锁定的 v2 工作。v2 工作开局先运行 `sdd-loop capabilities --require governance@2 --host <当前宿主>`，并加载 `sdd-route`：根据任务推荐 Loop、Hotfix 或 Debug，向用户说明理由并取得具体路线确认，然后固定项目或流级 `workflow.md`。项目定义在 `docs/sdd/workflows/<route>/workflow.md`，流级完整覆盖在 `docs/sdd/workflows/<stream>/<route>/workflow.md`；已启动工作只按启动时锁定的定义执行。
+
+v2 人工测试每轮只追加问题、修复范围、定向测试、部署版本和复测结果；新产品决定当场取得用户确认，架构影响当场记事实。候选稳定后只回写受影响条款及其确认，重验受影响下游证据。最终测试、架构对账、AI Review、人工签署或预声明免签按锁定依赖图推进；Review 豁免也必须预声明。提交者本人可以签署。Review 后再修复时，重新固定候选并对新差异补测试、复测及 Review。其他流修改交付清单外文件不使本轮审查失效；共享文件变化需定向测试和差量 Review。关闭时核对历史快照、审计链和签署，交付提交区间运行只读 `sdd-loop provenance check`，不得缩小真实交付范围来消红。
+
 - 本项目要求本机 sdd-loop 提供 `governance@1`，且治理 Skills 已安装到当前宿主。每轮开局必须先运行 `sdd-loop capabilities --require governance@1 --host <当前宿主>`，成功后再运行 `sdd-loop check`；宿主值为 Claude Code=`claude`、Codex/Kimi Code 等共享 Agent Skills 宿主=`agents`、OpenClaw=`openclaw`、Hermes=`hermes`、pi=`pi`。命令不存在、退出非 0、协议不受支持或宿主未就绪时立即停止。旧 CLI 可能忽略 `governanceVersion`，所以 check 绿色不能替代能力预检。工具与 Skills 的唯一来源是 `https://github.com/Roger0808/sdd-loop`；按该仓库 README 的更新步骤升级并开启新会话后重试。未经用户明确授权不得自动下载、安装、链接或切换工具版本。
 - 状态文件包含 `governanceVersion`、`gateStage`、`gateState`、`gateFingerprint`、`enabledExtensions` 和六类 `role*` 映射。它们是机器门禁，不在其他文件复制当前值。
 - 治理事件必须读取当前仓库的 `git user.name` / `git user.email`，并匹配状态文件登记的 Requester、Product、Architect、Implementer、Reviewer 或 Approver。缺身份、角色不匹配时停止，不编造临时身份。
@@ -112,6 +116,8 @@ Requirements
 
 ## Hotfix 独立通道
 
+以下以 `hotfix@1` 和 `hotfix_closed` 为名的条款仅适用于既有 v1 Hotfix；新 v2 Hotfix 以启动时锁定的 Hotfix `workflow.md` 为准。
+
 - Hotfix 只能加载 `sdd-hotfix` skill 启动；开工前除 `governance@1` 外还必须运行 `sdd-loop capabilities --require hotfix@1 --host <当前宿主>`。能力缺失时停止并提示更新，不得自动安装本机 Skill。
 - Hotfix 与普通 Loop 并行，不修改 `activeLoop`、`nextLoop`、`gateStage` 或 `gateState`，也不是跳过普通 Loop 阶段的开关。用户决定是否采用 Hotfix；风险必须展示和留痕，但不按类别或 diff 大小自动拒绝。
 - 首次响应只读勘察并展示问题/目标、修改范围、API/数据/权限/依赖/部署风险、基线和 reviewer 路径；用户一次确认后，才创建独立分支或 worktree 和一份 Hotfix 文档。
@@ -122,6 +128,8 @@ Requirements
 - 启动时选择的只读 AI reviewer 路径不得中途静默更换。只有 `READY_FOR_HUMAN_REVIEW` 后，用户才能对当前修复指纹签署；随后把文档和对应审计目录移入对应的归档 Hotfix 目录并记录 `hotfix_closed`。
 
 ## Debug 人工测试通道
+
+以下以 `debug@1` 和 `debug_closed` 为名的条款仅适用于既有 v1 Debug；新 v2 Debug 以启动时锁定的 Debug `workflow.md` 为准。
 
 - `/sdd-debug`（pi 为 `/sdd debug`）只能加载 `sdd-debug` skill 启动；先运行 `sdd-loop capabilities --require debug@1 --host <当前宿主>`，并确认当前状态文件已有 `governanceVersion: 1` 与 `roleApprover` 映射。缺失时必须在开始修复前 fail-fast，先走 `/sdd upgrade` 的治理升级，不得拖到“开始收口”才发现无法关闭。Debug 与普通 Loop 并行，不修改 `activeLoop`、`nextLoop`、`gateStage` 或 `gateState`。
 - Debug 启动时只记录 Git/工作区基线和测试环境，不创建文档、不选择 reviewer、不做范围确认。人工测试期间按“用户反馈 → AI 排查修复 → 定向测试 → 测试环境部署 → 用户复测”循环；为解决当前问题所需的跨模块修改不因超出原 Loop 的预测改动面而另设门禁。
@@ -144,6 +152,8 @@ Requirements
 - 已经在主工作区开始的存量 Loop，只有在 `implementation.md` 记录一次性 worktree 豁免和原因后才能继续；豁免不得延续到下一个 Loop。
 
 ## 阶段门禁
+
+v2 的阶段顺序和 Review/签署策略由锁定的依赖图决定；下列各阶段内容要求仍适用，v1 的固定推进顺序只约束未迁移的 v1 工作。
 
 ### Requirements
 

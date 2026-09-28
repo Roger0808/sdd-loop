@@ -93,7 +93,7 @@ test("README 的宿主表 ≡ 安装计划支持的宿主——加了宿主漏�
 test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
   const allowed = new Set([
     ...DEFAULT_CONVENTION.stageDocs,
-    "status", "agents", "candidate", "claude", "readme", "overview", "stream", "opt-in",
+    "status", "agents", "candidate", "claude", "readme", "overview", "stream", "opt-in", "workflow",
   ]);
   for (const { file, text } of READMES) {
     for (const [, name] of text.matchAll(/\b([a-z][a-z-]*)\.md\b/g)) {

@@ -18,6 +18,7 @@ import { runGovernance } from "./lib/governance.mjs";
 import { runCapabilities } from "./lib/capabilities.mjs";
 import { runHotfix } from "./lib/hotfix.mjs";
 import { runFullTestCli } from "./lib/full-test.mjs";
+import { runWorkflow, runProvenance } from "./lib/workflow.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
 import { pickExample } from "../src/spec-guide/example.js";
@@ -33,6 +34,11 @@ const HELP = `sdd-loop — SDD Loop 仪器
   sdd-loop check [--repo <dir>] [--stream <name>] [--status-file <path>] [--archive-dir <path>] [--json]
   sdd-loop guide [--type <doc.clause>] [--repo <dir>] [--docs-dir <path>] [--json]
   sdd-loop capabilities [--require <name@protocol-version>] [--host <host>] [--json]
+  sdd-loop workflow recommend --request-file <path> [--repo <dir>] [--stream <name>]
+  sdd-loop workflow show --route <loop|hotfix|debug> [--repo <dir>] [--stream <name>]
+  sdd-loop workflow start --route <route> --confirmation-json <path> [--id <id>] [--stream <name>]
+  sdd-loop workflow record|close --run <relative-dir> --event-json <path> [--repo <dir>]
+  sdd-loop provenance check --base <commit> --head <commit> [--repo <dir>]
   sdd-loop init -g [--claude] [--agents] [--openclaw] [--hermes] [--pi] [--show]
 
 init -g：把本包装进这台机器的 agent 宿主。五个落点：
@@ -317,6 +323,12 @@ function main() {
     process.exit(command ? EXIT_OK : EXIT_UNUSABLE);
   }
   if (command === "check") return runCheck(args);
+  if (command === "workflow") return runWorkflow(args, {
+    stdout: (s) => process.stdout.write(s), stderr: (s) => process.stderr.write(s), exit: (code) => process.exit(code),
+  });
+  if (command === "provenance") return runProvenance(args, {
+    stdout: (s) => process.stdout.write(s), stderr: (s) => process.stderr.write(s), exit: (code) => process.exit(code),
+  });
   if (command === "guide") return runGuide(args);
   if (command === "capabilities") {
     return runCapabilities(args, {

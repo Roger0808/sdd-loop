@@ -172,7 +172,7 @@ Debug 不因关联修改超出原 Loop 的预测改动面而反复请求范围�
 
 要求 Node ≥ 20。
 
-**完整安装：七个 Skill + `capabilities` / `check` / `guide` CLI**
+**完整安装：八个 Skill + `capabilities` / `check` / `guide` / `workflow` / `provenance` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -292,7 +292,26 @@ sdd-loop check --json
 | `1` | 声明与仓库事实矛盾 |
 | `2` | 判据不可读，不给结论 |
 
-启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁。分流仓库在 `review_completed` 记录本轮经审查的 `deliveryScope`，C10 关闭后只重算该范围，因此兄弟流交付不会让本流变红。若本流保护范围后来发生合法变化，Approver 可在核对原因与证据后追加 `closure_drift_accepted`；存量已关闭流在第一次接受时建立范围，已建立的范围不得缩小或替换。之后该范围再次变化仍会 fail closed。旧 CLI 不认识新事件，因此会继续报红而不是静默接受；分流指纹还会排除所有 Loop 控制与归档目录。发现 Hotfix 文件时追加 H1–H5 检查；`route: debug` 由同一组检查验证人工验收、最终证据和 Review 豁免，并拒绝混入标准 Hotfix 的 Review/签署事件。没有 Hotfix 文件时，现有文本、JSON、pi details 和退出码保持不变。
+启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁。已关闭 v1 Loop 保留当时的 Review 和签署关系；若能从 Review 提交重建签署时的交付指纹，后续工作区变化不再使旧 Loop 报红。历史内容无法重建时，Approver 可在明确核对差异并说明证据局限后一次性记录 `legacy_baseline_established`，不补造旧 Review 或签署。原 `closure_drift_accepted` 路径保留兼容。进行中的分流 v1 Loop 可用 `legacy_scope_reconciled` 记录完整原审查范围、精确文件、兄弟流变更归属、定向测试和差量 Review，原阶段和签署规则不自动迁移。发现 Hotfix 文件时追加 H1–H5 检查；`route: debug` 由同一组检查验证人工验收、最终证据和 Review 豁免。没有 Hotfix 文件时，现有文本、JSON、pi details 和退出码保持不变。
+
+### 动态工作流与治理 v2
+
+Loop、Hotfix、Debug 各有独立的 [`workflow.md`](workflows/loop/workflow.md)：[`Loop`](workflows/loop/workflow.md)、[`Hotfix`](workflows/hotfix/workflow.md)、[`Debug`](workflows/debug/workflow.md)。项目可在 `docs/sdd/workflows/<route>/workflow.md` 完整覆盖，流可在 `docs/sdd/workflows/<stream>/<route>/workflow.md` 完整覆盖；流级优先。阶段依赖图会校验，用户确认流程后固定定义和摘要，后续修改配置不重释既有工作。Loop 六份阶段文档仍必需。
+
+新工作启动前，将对应状态文件设为 `governanceVersion: 2`；v1 工作不会自动迁移。路由器根据任务推荐 Loop、Hotfix 或 Debug 并说明理由，用户确认后才能 `workflow start`。每轮人工测试只记录 `issue`、`fixScope`、`targetedTest`、`deployment`、`retest`；产品决定出现时当场确认，稳定候选后只重新确认受影响条款。最终测试、架构对账、Review 与提交者本人/指定角色/可选/免签依固定依赖图执行；Review 和签署豁免必须在流程定义中预先声明。已关闭工作核对归档文档、审计链和历史源码快照；交付区间另行做提交溯源。
+
+```bash
+sdd-loop workflow recommend --request-file /tmp/request.txt --repo .
+sdd-loop workflow show --route loop --repo .
+sdd-loop workflow start --route loop --confirmation-json /tmp/route.json --repo .
+sdd-loop workflow record --run docs/loops/loop-1 --event-json /tmp/event.json --repo .
+sdd-loop workflow close --run docs/archive/loop-1-done --event-json /tmp/close.json --repo .
+sdd-loop provenance check --base <base-commit> --head <delivery-commit> --repo .
+```
+
+`provenance check` 是只读检查，将提交区间内每条变更归为 `covered`、`drifted`、`unattributed` 或 `ambiguous`；交付门禁应要求全部为 `covered`。旧 CLI 遇到 `governanceVersion: 2` 会报不支持。
+
+`workflow close` 会把活跃工作目录移入锁定的归档目录，并返回归档后的 `runDir`；后续检查和溯源使用这一新路径。既有 v1 Hotfix、Debug 的路径与规则不变。
 
 ### 条款口径
 

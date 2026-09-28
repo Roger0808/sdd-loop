@@ -172,7 +172,7 @@ Audit verdicts: `RECOMMEND_ADOPTION`, `NEEDS_REVISION`, `KEEP_CURRENT`, `NOT_TES
 
 Requires Node ≥ 20.
 
-**Full: seven Skills + `capabilities` / `check` / `guide` CLI**
+**Full: eight Skills + `capabilities` / `check` / `guide` / `workflow` / `provenance` CLI**
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -292,7 +292,26 @@ sdd-loop check --json
 | `1` | declarations contradict repository facts |
 | `2` | evidence is unreadable; no verdict |
 
-Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. In split-stream repositories, `review_completed` records the Loop's reviewed `deliveryScope`; C10 later fingerprints only that scope, so delivery in a sibling stream does not invalidate the closed Loop. If its own protected scope later changes legitimately, an Approver can append `closure_drift_accepted` with the reviewed reason and evidence; legacy closed streams establish their scope during this first acceptance, and established scopes cannot be narrowed or replaced. Any later change inside that scope fails closed again. Older CLIs remain red rather than silently accepting the new event. Loop control and archive directories are excluded from split-stream delivery fingerprints. When Hotfix files exist, H1–H5 are appended; `route: debug` uses those checks for manual acceptance, final evidence and the Review waiver, while rejecting standard-Hotfix Review/sign-off events. Without Hotfix files, existing text, JSON, pi details and exit codes stay unchanged.
+Repositories with `governanceVersion: 1` also validate approval/Continue, role identity, the audit hash chain, fingerprints, all four engineering extensions and the human close gate. Closed v1 Loops retain their historical Review and signature relationship. When the Review commit can reproduce the signed delivery fingerprint, later worktree changes do not invalidate that closed Loop. If historical bytes cannot be reconstructed, an Approver can record a one-time `legacy_baseline_established` event with a difference review and an explicit evidence limitation; this does not invent a past Review or signature. The previous `closure_drift_accepted` path remains available for compatibility. Active split-stream v1 Loops can record `legacy_scope_reconciled` with the complete reviewed scope, exact files, excluded sibling changes, targeted tests and delta Review. Existing approval order is unchanged. When Hotfix files exist, H1–H5 are appended; `route: debug` uses those checks for manual acceptance, final evidence and the Review waiver. Without Hotfix files, existing text, JSON, pi details and exit codes stay unchanged.
+
+### Dynamic workflows and governance v2
+
+Each route has an independent `workflow.md`: [`workflows/loop/workflow.md`](workflows/loop/workflow.md), [`workflows/hotfix/workflow.md`](workflows/hotfix/workflow.md), and [`workflows/debug/workflow.md`](workflows/debug/workflow.md). A project may replace an entire definition at `docs/sdd/workflows/<route>/workflow.md`; a stream may replace it at `docs/sdd/workflows/<stream>/<route>/workflow.md`. Stream overrides take precedence. Definitions use a checked dependency graph, and the selected definition and hash are locked when the user confirms a route. A later config change does not reinterpret an existing run. The six Loop stage documents remain required.
+
+Set `governanceVersion: 2` on a new run's status file before starting it. Existing v1 runs do not migrate automatically. The router recommends Loop, Hotfix or Debug from the request and explains its choice; the user confirms the route before `workflow start`. Record each manual test cycle with `issue`, `fixScope`, `targetedTest`, `deployment`, and `retest`. Confirm product decisions when they arise, then reconfirm only changed document clauses at the stable candidate. Final test, architecture reconciliation, Review, and submitter/role/optional/no signature follow the locked graph. Review waiver and signature waiver must be declared in that definition. Closed runs validate archived documents, the audit chain and the historical source receipt; delivery provenance is checked separately against a Git commit interval.
+
+```bash
+sdd-loop workflow recommend --request-file /tmp/request.txt --repo .
+sdd-loop workflow show --route loop --repo .
+sdd-loop workflow start --route loop --confirmation-json /tmp/route.json --repo .
+sdd-loop workflow record --run docs/loops/loop-1 --event-json /tmp/event.json --repo .
+sdd-loop workflow close --run docs/archive/loop-1-done --event-json /tmp/close.json --repo .
+sdd-loop provenance check --base <base-commit> --head <delivery-commit> --repo .
+```
+
+`provenance check` is read only and classifies each changed path as `covered`, `drifted`, `unattributed`, or `ambiguous`. A delivery gate should require all rows to be `covered`. The old CLI fails closed on `governanceVersion: 2`.
+
+`workflow close` moves an active run into its locked archive directory and returns the archived `runDir`. Subsequent checks and provenance use that returned path. Existing v1 Hotfix and Debug paths and rules remain unchanged.
 
 ### Clause guide
 

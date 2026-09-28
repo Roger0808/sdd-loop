@@ -5,6 +5,8 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 
 # SDD Review：从实现事实到人工签字
 
+状态文件为 `governanceVersion: 2` 时，先读取锁定的 `workflow.lock.json` 并加载 `sdd-route`。人工测试形成稳定候选后，按流程依赖完成最终测试、架构对账、正式 Review 与签署；修复后的新候选只补新差异的 Review 证据。下方 `_governance`、全仓指纹及固定门禁说明仅用于既有 v1 工作。
+
 ## 入口门禁
 
 1. 运行 `sdd-loop check`，只处理当前流的活跃 Loop。状态不可读或声明与事实矛盾时停止。

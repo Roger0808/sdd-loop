@@ -1,4 +1,5 @@
 import path from "node:path";
+import { reconstructLegacyReceipt } from "../governance/legacy-receipt.js";
 
 import { isBlank } from "../loop/front-matter.js";
 import {
@@ -17,6 +18,7 @@ import {
   splitList,
   validateEventAuthorization,
 } from "../governance/protocol.js";
+import { compareSource } from "../workflow/source.js";
 
 const SEVERITY = "problem";
 
@@ -226,16 +228,22 @@ export function buildGovernanceChecks(scan, { stream = null } = {}) {
   }
 
   const review = latest(audit.events, "review_completed");
+  const legacyScope = latest(audit.events, "legacy_scope_reconciled");
+  let legacyScopeValid = false;
+  if (legacyScope && review && legacyScope.timestamp >= review.timestamp && legacyScope.sourceManifest) {
+    try { legacyScopeValid = compareSource(scan.repoRoot, legacyScope.sourceManifest).ok; }
+    catch { legacyScopeValid = false; }
+  }
   if (["ready-for-human-review", "human-approved", "closed"].includes(meta.gateState)) {
     if (!review || review.payload?.outcome !== "READY_FOR_HUMAN_REVIEW") {
       fail(c10, `${meta.gateState} 必须有 READY_FOR_HUMAN_REVIEW 审查事件。`, { file: scan.status.path });
     }
     const current = meta.gateState === "closed" ? meta.gateFingerprint : fingerprintCurrentCode(scan, audit);
-    if (!current || current !== meta.gateFingerprint || review?.codeFingerprint !== current) {
+    if (!current || (!legacyScopeValid && current !== meta.gateFingerprint) || review?.codeFingerprint !== meta.gateFingerprint) {
       fail(c8, "AI Review 后代码、配置或关键文档发生变化，旧审查已经失效。", { file: scan.status.path });
     }
     const reconciled = latest(audit.events, "architecture_reconciled");
-    if (!reconciled || reconciled.codeFingerprint !== current || reconciled.timestamp > review?.timestamp) {
+    if (!reconciled || reconciled.codeFingerprint !== meta.gateFingerprint || reconciled.timestamp > review?.timestamp) {
       fail(c8, "Architecture Baseline 与 change surface 没有按当前审查指纹完成对账。", { file: scan.status.path });
     }
   }
@@ -243,7 +251,7 @@ export function buildGovernanceChecks(scan, { stream = null } = {}) {
   const needsExtensions = meta.gateStage === "verification"
     || ["review-blocked", "ready-for-human-review", "human-approved", "closed"].includes(meta.gateState);
   if (needsExtensions) {
-    const currentFingerprint = meta.gateState === "closed"
+    const currentFingerprint = legacyScopeValid ? meta.gateFingerprint : meta.gateState === "closed"
       ? meta.gateFingerprint
       : fingerprintCurrentCode(scan, audit);
     for (const extension of enabled) {
@@ -278,7 +286,7 @@ export function buildGovernanceChecks(scan, { stream = null } = {}) {
   }
   if (["human-approved", "closed"].includes(meta.gateState)) {
     const signed = latest(audit.events, "human_signed");
-    if (!signed || signed.codeFingerprint !== meta.gateFingerprint || signed.timestamp < review?.timestamp) {
+    if (!signed || (signed.codeFingerprint !== meta.gateFingerprint && !legacyScopeValid) || signed.timestamp < review?.timestamp) {
       fail(c10, "缺少当前审查指纹对应、且发生在 AI Review 之后的人工签署。", { file: scan.status.path });
     }
   }
@@ -311,9 +319,10 @@ export function buildGovernanceChecks(scan, { stream = null } = {}) {
         deliveryScope: establishedScope,
       })
       : null;
-    const closedDeliveryValid = Boolean(
-      closed?.deliveryFingerprint && closed.deliveryFingerprint === review?.deliveryFingerprint,
-    );
+    const closedDeliveryValid = Boolean(closed?.deliveryFingerprint && (
+      closed.deliveryFingerprint === review?.deliveryFingerprint
+      || (legacyScopeValid && closed.deliveryFingerprint === legacyScope.sourceManifest.fingerprint)
+    ));
     const originalDeliveryUnchanged = Boolean(
       closedDeliveryValid && reviewScope.ok && closed.deliveryFingerprint === currentClosedDelivery,
     );
@@ -329,7 +338,16 @@ export function buildGovernanceChecks(scan, { stream = null } = {}) {
       && String(acceptance.payload?.reason ?? "").trim()
       && String(acceptance.payload?.evidence ?? "").trim(),
     );
-    if (!originalDeliveryUnchanged && !acceptedCurrentDelivery) {
+    const historical = closedDeliveryValid && !originalDeliveryUnchanged && !acceptedCurrentDelivery && reconstructLegacyReceipt(scan.repoRoot, {
+      review, statusRel: scan.status.path, archiveDir: scan.convention.archiveDir, stream,
+    });
+    const baseline = latest(audit.events, "legacy_baseline_established");
+    const forwardBaselineValid = Boolean(baseline && !historical?.ok
+      && baseline.codeFingerprint === meta.gateFingerprint
+      && baseline.timestamp >= closed?.timestamp
+      && String(baseline.payload?.reason ?? "").trim()
+      && String(baseline.payload?.evidence ?? "").trim());
+    if (!originalDeliveryUnchanged && !acceptedCurrentDelivery && !historical?.ok && !forwardBaselineValid && !legacyScopeValid) {
       fail(c10, "Loop 关闭后代码、配置或长期文档与签署时不一致。", { file: scan.status.path });
     }
   }

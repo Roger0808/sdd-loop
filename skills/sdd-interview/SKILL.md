@@ -5,6 +5,8 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 # SDD 访谈：从一句话到四份文档
 
+状态文件为 `governanceVersion: 2` 时，先加载 `sdd-route` 推荐并让用户确认 Loop，再通过 `sdd-loop workflow start` 固定流程。访谈内容与写作口径仍按本 skill；文档确认和增量重验改用 `workflow record`，不得调用下方 v1 的 `_governance` 审批/Continue 事件。
+
 ## 这份 skill 是什么、不是什么
 
 访谈产出直接写进 Loop 目录里的阶段文档，`status: draft` 起步。确认是人的动作，skill 不代办；但治理模式下必须通过审计事件留下原始意图、答案、审批和后续 Continue，不能只留一句无法追溯的 `confirmed`。

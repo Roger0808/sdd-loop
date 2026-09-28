@@ -5,6 +5,8 @@ description: 在已有 SDD Loop 仓库中走独立、单文档的 Hotfix 通道�
 
 # SDD Hotfix
 
+状态文件为 `governanceVersion: 2` 时，先加载 `sdd-route`，展示 Hotfix 推荐理由并取得用户确认，随后固定 Hotfix `workflow.md`。维护单份 `hotfix.md`，人工测试循环只追加短事实；稳定候选后按锁定图测试、对账、Review 与动态签署。下列 `hotfix@1`、`_governance` 和固定 Reviewer 路径只适用于既有 v1 Hotfix，不得拿来解释 v2。
+
 Hotfix 与普通 Loop 并行：不修改 `activeLoop`、`nextLoop`、`gateStage` 或 `gateState`，不生成六份阶段文档。简化的是文档数量和中间审批，不取消验证、审查、审计、回滚与人工签署。
 
 ## 1. 首次响应：只读勘察并停下

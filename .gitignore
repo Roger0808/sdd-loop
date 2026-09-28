@@ -24,3 +24,4 @@ skills/*
 !skills/sdd-hotfix/
 !skills/sdd-debug/
 !skills/sdd-full-test/
+!skills/sdd-route/
