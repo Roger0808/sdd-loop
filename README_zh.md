@@ -1,178 +1,50 @@
-<h1 align="center">sdd-loop</h1>
+# sdd-loop
 
-<p align="center">
-  <strong>面向 AI 协作交付的可重复、可审计 SDD 生命周期</strong>
-</p>
+**用仓库文件管理 AI 协作开发流程。** 从需求确认、实施记录到代码审查和交付归档，让每一步都有可追溯的依据。
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Node-%E2%89%A520-brightgreen.svg" alt="Node >= 20">
-  <img src="https://img.shields.io/badge/宿主-14%20个-8A2BE2" alt="Hosts">
-</p>
+![MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Node](https://img.shields.io/badge/Node-%E2%89%A520-brightgreen.svg) ![宿主](https://img.shields.io/badge/宿主-14%20个-8A2BE2)
 
-<p align="center">
-  <a href="#工作流程">工作流程</a> &bull;
-  <a href="#安装">安装</a> &bull;
-  <a href="#命令">命令</a> &bull;
-  <a href="#仓库结构">仓库结构</a>
-</p>
+<a href="README.md">English</a> · <a href="README_zh.md">简体中文</a>
 
-<p align="center">
-  <a href="README.md">English</a> &bull;
-  <a href="README_zh.md">简体中文</a>
-</p>
+## 先选工作类型
 
----
+| 流程 | 适用场景 | 主要产物 |
+|---|---|---|
+| **Loop** | 新功能或计划内改动 | 七站访谈形成 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md`；实施与验证后组成六份阶段文档。 |
+| **Hotfix** | 范围明确的紧急修复 | 与普通 Loop 并行的一份独立修复文档。 |
+| **Debug** | 反复部署、人工测试和修复 | 每轮简记事实，版本稳定后再集中验证和验收。 |
 
-一句话需求 → 七站访谈 → 分阶段审批 → 隔离实施 → 工程验证 → 架构对账 → AI 审查 → 人工确认。完整走一遍就是一个 **Loop**。
+新治理 v2 工作由 pi 的 `/sdd` 命令（其他宿主使用 `sdd-route` Skill）**推荐** Loop、Hotfix 或 Debug，并说明理由；用户确认后才启动。项目和流都能完整覆盖各自的 [workflow 定义](workflows/loop/workflow.md)。启动时固定所选定义与摘要，后续修改配置不会改变进行中的工作。
 
-## 工作流程
+## 交付怎样推进
 
 ```mermaid
-flowchart LR
-    R[Requirements] --> G1[Approve → 停止 → 后续 Continue]
-    G1 --> A[Architecture]
-    A --> G2[Approve → 停止 → 后续 Continue]
-    G2 --> S[Specification]
-    S --> G3[Approve → 停止 → 后续 Continue]
-    G3 --> T[Tasks]
-    T --> G4[Approve → 停止 → 后续 Continue]
-    G4 --> W[Worktree Ready]
-    W --> I[Implementation]
-    I --> G5[Approve → 停止 → 后续 Continue]
-    G5 --> E[自动验证 + 工程扩展]
-    E --> B[Architecture Reconciliation]
-    B --> AI[AI Review]
-    AI --> H[Human Review]
-    H --> X[Closed]
+flowchart TD
+    A[提出需求] --> B[推荐流程并确认]
+    B --> C{流程}
+    C --> L[Loop · 六份阶段文档]
+    C --> HF[Hotfix · 一份文档]
+    C --> T[Debug · 循环记录]
+    L --> D[Worktree Ready · 实施]
+    HF --> D
+    T --> D
+    D --> E[部署与人工测试循环]
+    E --> F[稳定候选 · 最终测试]
+    F --> G[Architecture Reconciliation]
+    G --> REV[AI Review]
+    REV --> I[Human Review · 签署]
+    I --> J[归档与提交溯源]
 ```
 
-原有六份阶段文档和 `nextPhase` 取值不变，新增名称都是门禁：
+图中是典型的 v2 顺序，实际顺序以启动时锁定的依赖图为准。普通 Loop 保留六份阶段文档：`requirements.md`、`architecture.md`、`specification.md`、`tasks.md`、`implementation.md`、`verification.md`。初始需求必须明确确认；分流仓库的每个 `stream + Loop` 使用独立分支和 worktree。治理 v1 的阶段审批停在 `awaiting_continue`，直到用户后续明确继续；每个 worktree 的 `audit/*.jsonl` 分片用哈希链保留过程记录。
 
-| 门禁 | 必须具备的证据 |
-|---|---|
-| Requirements | `requirements.md` 已由用户明确确认 |
-| Architecture/Baseline | 本轮 `architecture.md` 已确认，长期 Architecture Baseline 与系统现状一致 |
-| Specification | `specification.md` 已定义可验证行为 |
-| Tasks | `tasks.md` 的每项任务都能追溯到已确认条款 |
-| Worktree Ready | 分流项目已为当前 stream + Loop 建立独立分支和 Git worktree |
-| Implementation | `implementation.md` 已记录基线分支、基线 commit、当前分支和任务范围 |
-| Automated Verification | 已记录测试、构建、部署检查和未执行项 |
-| Architecture Reconciliation | 最终代码已反向更新长期架构，并生成 change surface |
-| AI Review | 只读 reviewer 已给出一个固定结论 |
-| Human Review | 人工明确通过当前审查指纹 |
-| Closed | 阶段文档归档，并同步更新状态文件 |
+**治理 v2** 在人工测试期间只记录问题、修复范围、定向测试、部署和复测结果。新的产品决定出现时当场确认；候选版本稳定后，只修订受影响的文档条款并重验下游证据。最终验证按需记录 Testing、PBT、Security、Resiliency 证据，适用 PBT 时保留确定性 `seed`；架构对账与 Review 绑定候选版本。AI Review 前由**人类选择**当前 Agent 的只读 `subagent`，或指定其他 Agent 并生成 `handoff`。审查结果包括 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED`、`NOT_REVIEWABLE_SAFELY`。
 
-### 审批、角色与审计
-
-```mermaid
-stateDiagram-v2
-    [*] --> in_progress
-    in_progress --> awaiting_continue: approve
-    awaiting_continue --> in_progress: 后续用户明确 continue
-    in_progress --> ready_for_human_review: 扩展验证 + 架构对账 + AI Review
-    ready_for_human_review --> human_approved: 人工签署当前指纹
-    human_approved --> closed: 归档后记录关闭
-```
-
-| 机制 | 规则 |
-|---|---|
-| 角色 | Requester、Product、Architect、Implementer、Reviewer、Approver 映射到 Git 邮箱 |
-| Approve | 确认当前阶段并进入 `awaiting-continue`，不推进 `nextPhase` |
-| Continue | 必须来自后续用户消息；重新校验角色和文档指纹 |
-| 审计 | 每个 worktree 向自己的 `audit/*.jsonl` 分片追加事件，哈希链防篡改 |
-| 隐私 | Token、密码和私钥脱敏；不记录本机 worktree 绝对路径或完整 AI 输出 |
-| 失效 | 审批后文档变化使审批失效；Review 后代码或关键文档变化使签署失效 |
-
-### 工程质量扩展
-
-四项默认启用；每轮都必须写 `PASS`、`FAIL` 或有理由的 `N/A`：
-
-| 扩展 | 何时使用 | PASS 证据 |
-|---|---|---|
-| Testing | 所有存在可执行行为的改动 | 验收条件映射、命令、退出码、结果和未覆盖范围 |
-| PBT | Parser、业务规则、状态机、权限、幂等、排序、分页、并发 | Property、输入域、case 数、seed 和回归反例 |
-| Security | 输入、身份、权限、租户、Secrets、依赖或网络边界变化 | 信任边界、负向测试、检查结果和剩余风险 |
-| Resiliency | 外部依赖、重试、事务、部署或运行时变化 | 故障场景、超时/重试/幂等、回滚和观测证据 |
-
-没有 PBT 库时：`现有库 → 现有测试框架 + 确定性 seed 生成器 → 获批后新增依赖`。没有库本身不是 `N/A` 理由；只有不存在有价值的不变量时才可写明理由后跳过。
-
-### Worktree 隔离
-
-- 分流项目每个 `stream + Loop` 使用独立分支和 worktree。
-- 主工作区只用于同步、集成和审查。
-- 跨系统或平台级改动使用独立的 platform worktree。
-- 已在主工作区实施的存量 Loop 可记录一次性豁免；下一个 Loop 不得继承。
-
-### 架构与审查
-
-- 本轮 `architecture.md` 描述本轮方案；`docs/architecture/` 描述系统当前事实。
-- 优先沿用已有架构目录；没有时，单系统用 `docs/architecture/overview.md`，分流项目用 `docs/architecture/<stream>.md`。架构图使用 Mermaid 或 ASCII。
-- 自动化验证后，按最终代码更新 Architecture Baseline，并列出代码、配置、数据、接口、部署、测试和文档改动面。
-- AI Review 前停下由人类选择审查路径：留在当前 Agent 时由只读 subagent 审；换 Agent 时确认对象、生成 handoff 并等待结果。缺独立 reviewer 不自审。结论只能是 `READY_FOR_HUMAN_REVIEW`、`CHANGES_REQUIRED` 或 `NOT_REVIEWABLE_SAFELY`。
-
-| 人类选择 | 当前 Agent 的动作 | 审查者 |
-|---|---|---|
-| 留在当前 Agent | 启动只读 subagent；本体仅整理结果 | 独立 subagent |
-| 换一个 Agent | 追问具体对象，交付 handoff 后等待 | 指定 Agent 的独立只读 reviewer |
-- `verification.md` 固定包含 `Automated Verification`、`Architecture Reconciliation & Change Surface`、`AI Code Review` 和 `Human Review Packet`。
-- 代码或关键文档变化会使旧审查失效。只有人工记录确认人、时间、审查版本和指纹后才能关闭 Loop。
-
-### Hotfix 独立通道
-
-`/sdd-hotfix`（pi 也支持 `/sdd hotfix`）用于用户明确选择的紧急修复。它与普通 Loop 并行，不修改 `activeLoop`，也不把 Hotfix 当作普通 Loop 的跳阶段开关。
-
-```text
-只读启动卡（范围 + 风险 + reviewer） → 用户一次确认 → 隔离实施
-→ Testing/PBT/Security/Resiliency → 独立只读 AI Review
-→ 人工签署当前指纹 → 文档与审计一起归档
-```
-
-每个 Hotfix 只有一份 `hotfix-YYYYMMDD-NN.md`。单流放在 `docs/loops/hotfix/`，分流放在 `docs/loops/<stream>/hotfix/`；关闭后迁到对应 `docs/archive[/<stream>]/hotfix/`。编号按每条流、每天同时扫描活跃与归档目录后递增。Testing 必须 PASS，其余三项必须 PASS 或有明确 N/A 理由；架构受影响时必须回写长期 Architecture Baseline。
-
-### Debug 人工测试通道
-
-`/sdd-debug`（pi 也支持 `/sdd debug`）用于测试环境中的连续人工点测和修复。它不占用或推进普通 Loop，也不要求先写范围卡、Hotfix 文档或选择 Reviewer。
-
-该通道要求状态文件已有 `governanceVersion: 1` 和 `roleApprover` 映射，`/sdd-debug` 会在第一次修复前检查。旧项目可使用 `/sdd upgrade`：AGENTS 条款对齐动作会在你确认候选后补入 Debug 规则；如果项目仍缺治理配置，则明确报告“规则已对齐、通道尚未启用”，直到你另外选择治理升级动作。
-
-```text
-记录 Git/工作区基线 → 用户手测反馈 → AI 排查修复 → 定向测试
-→ AI 或用户部署测试环境 → 用户继续手测（循环）
-→ 用户说“开始收口” → 最终测试/构建/冒烟 → 按最终代码更新长期架构
-→ 反写并归档 route: debug 的 Hotfix → debug_closed
-```
-
-Debug 不因关联修改超出原 Loop 的预测改动面而反复请求范围确认；只有新的产品行为选择、生产操作、破坏性数据变更、Secrets/权限/安全策略、外部费用或无法安全回滚的共享环境操作才停下请求决定。收口文档必须明确 `acceptanceMode: manual-test`、`reviewStatus: waived` 和 `MANUAL_TEST_ACCEPTED_NO_INDEPENDENT_REVIEW`，不能把人工点测伪装成 `READY_FOR_HUMAN_REVIEW`。用户的“开始收口”同时是生成回溯记录和关闭的授权，不再索要第二次确认。
-
-### Full-Test 证据执行器
-
-`/sdd-full-test`（pi 也支持 `/sdd full-test`）用于调度项目自备的测试插件并采集可校验证据包。它定位于“证据执行器”，不替 Reviewer 下通过结论，而是生成 `manifest.sha256`，并要求将该清单的 SHA-256 另存到包外，供人工和 AI Review 后续锚定复核。
-
-```text
-探测测试清单（tests/sdd/plugin.yaml 或可配置路径） → 校验协议 sdd-full-test/v1
-→ 选择 profile 或 suites → preflight 探活与资源锁排他
-→ 运行测试并在 finally 路径执行平账清理（未平账严禁宣布为 PASS）
-→ 生成 Evidence Bundle 与 manifest.sha256
-→ 提议 verification.md 待审事实与多对多 extensionClaims 索赔
-```
-
-## AGENTS.md 处理
-
-- 没有 AGENTS.md：sdd-init 按单流/分流和项目事实筛选规则，直接生成结构化最终版本。
-- 已有 AGENTS.md：sdd-init 或 sdd-upgrade 只在 `/tmp` 生成 `AGENTS.candidate.md` 和逐项报告，不静默覆盖仓库文件。
-- 已初始化项目运行 `/sdd upgrade` 的“条款对齐”后，会从 `AGENTS.md.CHANGELOG.md` 发现 Debug 常驻条款；用户确认候选后补入项目 `AGENTS.md`，不会静默覆盖项目自有规则。
-- 删除、移动和合并必须逐项授权；模型、权限、MCP 和宿主配置不在审计范围内。
-
-分类：`KEEP_SDD_CANONICAL`、`KEEP_PROJECT_SPECIFIC`、`DUPLICATED`、`STALE`、`MODEL_OR_HOST_SPECIFIC`、`BELONGS_IN_AGENT_CONFIG`、`CANONICAL_ELSEWHERE`、`UNCLEAR`。
-
-审计结论：`RECOMMEND_ADOPTION`、`NEEDS_REVISION`、`KEEP_CURRENT`、`NOT_TESTABLE_SAFELY`。
+流程定义预先声明 Review 是否豁免，以及由提交者本人、指定角色签署、可选签署或免签。源码收据按实际变更文件建立：兄弟流无关改动不使本轮审查失效；共享文件的变更需定向测试和差量 Review。已关闭工作保留当时的源码收据，后续对同一文件的修改由后续交付负责。`sdd-loop provenance` 对提交区间核查交付归属。
 
 ## 安装
 
-要求 Node ≥ 20。
-
-**完整安装：八个 Skill + `capabilities` / `check` / `guide` / `workflow` / `provenance` CLI**
+要求 Node ≥ 20。安装 CLI 和八个 Skill：
 
 ```bash
 git clone https://github.com/Roger0808/sdd-loop.git && cd sdd-loop
@@ -181,178 +53,79 @@ npm link
 sdd-loop init -g
 ```
 
-**只安装 Skill：适用于已经安装 CLI 的环境**
+如果已安装 CLI，只安装 Skill：`npx skills@latest add Roger0808/sdd-loop -g`。安装后重启 Agent 或开启新会话。
+
+按项目使用的治理版本，检查当前宿主是否装齐能力：
 
 ```bash
-npx skills@latest add Roger0808/sdd-loop -g
+sdd-loop capabilities --require governance@2 --host agents
+sdd-loop capabilities --require governance@1 --host agents
 ```
 
-| 落点 | 安装方式 |
+`--host` 可选 `claude`、`agents`、`openclaw`、`hermes`、`pi`：
+
+| 宿主 | 安装落点 |
 |---|---|
-| 内置 Skill | [sdd-init](skills/sdd-init)、[sdd-interview](skills/sdd-interview)、[sdd-upgrade](skills/sdd-upgrade)、[sdd-review](skills/sdd-review)、[sdd-hotfix](skills/sdd-hotfix)、[sdd-debug](skills/sdd-debug)、[sdd-full-test](skills/sdd-full-test) |
 | Claude Code | `~/.claude/skills/` |
-| Agent Skills 宿主 | `~/.agents/skills/` — Codex、Gemini CLI、GitHub Copilot、Cursor、Windsurf、OpenCode、OpenClaw、Kimi Code、Antigravity、Factory Droid、Roo Code |
-| Hermes Agent | 通过其 Skills 配置登记 |
+| Agent Skills | `~/.agents/skills/`，供 Codex、Gemini CLI、GitHub Copilot、Cursor、Windsurf、OpenCode、Kimi Code、Antigravity、Factory Droid、Roo Code 使用 |
+| OpenClaw | 默认使用共享目录；`OPENCLAW_STATE_DIR` 可指定独立 state |
+| Hermes Agent | Skills 配置 |
 | pi | 登记本包 |
 
-| 选项 | 效果 |
-|---|---|
-| `--claude` / `--agents` / `--openclaw` / `--hermes` / `--pi` | 只安装到指定宿主 |
-| `--show` | 只预览，不写入 |
-| OpenClaw 默认 state | `sdd-loop init -g --openclaw` → `~/.agents/skills/` |
-| 自定义 `OPENCLAW_STATE_DIR` | `sdd-loop init -g --openclaw` → `$OPENCLAW_STATE_DIR/skills/` |
-| 已有同名文件或目录 | 报告冲突，不覆盖、不删除 |
+`init -g` 可用 `--claude`、`--agents`、`--openclaw`、`--hermes`、`--pi` 限定落点，`--show` 只预览；已有文件不会被覆盖。
 
-### 更新
+### 第一次使用
 
-**完整安装**
+新仓库先让 Agent 执行 `/sdd init`（`sdd-init`），然后用 `/sdd` 描述工作。确认前可查看流程推荐和定义：
 
 ```bash
-cd <sdd-loop-dir>
+sdd-loop workflow recommend --request-file /tmp/request.txt --repo .
+sdd-loop workflow show --route loop --repo .
+```
+
+启动 v2 工作前，在项目状态文件中配置 `governanceVersion: 2`，并确认推荐的流程。之后 Agent 使用 `sdd-loop workflow start`、`sdd-loop workflow record`、`sdd-loop workflow close`；`close` 把工作目录移入锁定的归档位置并返回新路径。确认原文和事件通过 JSON 文件传入 CLI，不进入 shell 历史。
+
+## Skill 与命令
+
+| 对 Agent 说 | Skill | 用途 |
+|---|---|---|
+| `/sdd init` | [`sdd-init`](skills/sdd-init) | 建立项目规则和状态入口。 |
+| `/sdd` | [`sdd-interview`](skills/sdd-interview)、[`sdd-route`](skills/sdd-route) | 启动或继续 Loop；推荐 v2 流程并等待确认。 |
+| `/sdd upgrade` | [`sdd-upgrade`](skills/sdd-upgrade) | 对齐已有项目规则或迁移为分流。 |
+| `/sdd review` | [`sdd-review`](skills/sdd-review) | 更新 Architecture Baseline，准备 AI Review 与 Human Review 材料。 |
+| `/sdd-hotfix` | [`sdd-hotfix`](skills/sdd-hotfix) | 独立紧急修复；pi 也支持 `/sdd hotfix`。 |
+| `/sdd-debug` | [`sdd-debug`](skills/sdd-debug) | 反复手测与修复；pi 也支持 `/sdd debug`。 |
+| `/sdd-full-test` | [`sdd-full-test`](skills/sdd-full-test) | 采集可校验的测试证据包；pi 也支持 `/sdd full-test`。 |
+
+CLI 提供六个用户命令：
+
+| 命令 | 用途 |
+|---|---|
+| `sdd-loop check --repo <目录> [--stream <流>]` | 只读对账状态与仓库事实；退出 `0` 为一致、`1` 为矛盾、`2` 为证据不可读。 |
+| `sdd-loop guide --type specification.entity-table` | 写条款前查看要求、现有编号族和仓库示例。 |
+| `sdd-loop capabilities --require governance@2 --host agents` | 检查 CLI、规则和宿主 Skill；另有 `hotfix@1`、`debug@1`、`full-test@1`。 |
+| `sdd-loop workflow`（`recommend`、`show`、`start`、`record`、`close`） | 推荐流程、查看依赖图并记录用户确认的 v2 工作。 |
+| `sdd-loop provenance check --base <起点> --head <终点>` | 将变更归为 `covered`、`drifted`、`unattributed` 或 `ambiguous`；交付门禁应要求全部有归属。 |
+| `sdd-loop init -g` | 安装 Skill 与宿主集成；不会初始化项目仓库。 |
+
+## 配置与旧项目
+
+- 内置定义：[Loop](workflows/loop/workflow.md)、[Hotfix](workflows/hotfix/workflow.md)、[Debug](workflows/debug/workflow.md)。项目在 `docs/sdd/workflows/<route>/workflow.md` 完整覆盖；流级 `docs/sdd/workflows/<stream>/<route>/workflow.md` 优先。依赖图允许先部署、人工测试，再做最终验证。
+- 新工作使用 `governanceVersion: 2`；进行中的 v1 工作保留原阶段和签署规则。分流 v1 Loop 可用 `legacy_scope_reconciled` 显式核对范围、定向测试和差量 Review。旧归档源码无法重建时，`legacy_baseline_established` 只建立一次向前基线并注明历史证据局限，不补造旧审批。
+- 旧版 CLI 遇到 `governanceVersion: 2` 会报不支持。`sdd-upgrade` 更新的是项目规则，**不会自动更新工具**或本机 Skill。
+- `AGENTS.md` 是项目门禁；已有文件时，初始化或升级只生成候选和逐项报告，不静默覆盖。`KEEP_SDD_CANONICAL`、`NOT_TESTABLE_SAFELY` 等分类详见 [sdd-upgrade](skills/sdd-upgrade/SKILL.md)。
+
+完整安装的更新方式：
+
+```bash
 git pull --ff-only
 npm install
 npm link
 sdd-loop init -g
 ```
 
-**只安装 Skill**
-
-```bash
-npx skills@latest update -g
-```
-
-| 更新动作 | 效果 |
-|---|---|
-| `git pull` | 更新 CLI 和软链指向的 Skill 内容 |
-| `sdd-loop init -g` | 补充新 Skill 或宿主配置 |
-| `npx skills@latest update -g` | 更新由 `npx skills` 管理的安装 |
-| `sdd-upgrade` | 更新项目内的 SDD/AGENTS 规则，不更新本机安装包 |
-
-安装后重启宿主或开启新会话。
-
-```bash
-sdd-loop capabilities --require governance@1 --host agents
-sdd-loop capabilities --require hotfix@1 --host agents
-sdd-loop capabilities --require debug@1 --host agents
-sdd-loop capabilities --require full-test@1 --host agents
-```
-
-治理项目开工前先运行。`--host` 取 `claude`、`agents`、`openclaw`、`hermes` 或 `pi`；Codex、Kimi Code 等读取共享 Agent Skills 的宿主使用 `agents`。命令不存在或退出非 0，表示 CLI/规则资源不完整，或当前宿主尚未安装 Skills；项目规则不会自动更新工具。
-
-## 命令
-
-| CLI | 用途 |
-|---|---|
-| `sdd-loop capabilities --require governance@1 --host <宿主>` | Fail closed 检查 CLI、治理资源及当前宿主的 Skill 安装是否支持协议 1 |
-| `sdd-loop capabilities --require hotfix@1 --host <宿主>` | 检查 Hotfix 协议、治理依赖及当前宿主是否发现 `sdd-hotfix` |
-| `sdd-loop capabilities --require debug@1 --host <宿主>` | 检查 Debug 回溯收口协议、治理依赖及当前宿主是否发现 `sdd-debug` |
-| `sdd-loop capabilities --require full-test@1 --host <宿主>` | 检查 Full-Test 协议资源及当前宿主是否发现 `sdd-full-test` |
-| `sdd-loop check` | 对账状态声明与仓库事实 |
-| `sdd-loop guide --type <doc.clause>` | 查询条款口径和现有编号族 |
-
-### 七个工作流命令
-
-```mermaid
-flowchart TD
-    A{已有 SDD Loop 结构?}
-    A -- 否 --> I["/sdd init · sdd-init"]
-    A -- 是 --> B{当前要做什么?}
-    B -- 启动或继续 Loop 文档 --> N["/sdd · sdd-interview"]
-    B -- 更新规则、分流或 AGENTS --> U["/sdd upgrade · sdd-upgrade"]
-    B -- 运行全维度测试并收集证据 --> T["/sdd-full-test 或 /sdd full-test · sdd-full-test"]
-    B -- 已验证实现进入收口 --> R["/sdd review · sdd-review"]
-    B -- 独立紧急修复 --> H["/sdd-hotfix 或 /sdd hotfix · sdd-hotfix"]
-    B -- 人工点测连续调试 --> D["/sdd-debug 或 /sdd debug · sdd-debug"]
-```
-
-| pi 命令 | Skill 名称 / 斜杠别名 | 什么时候用 | 产出 |
-|---|---|---|---|
-| `/sdd init` | `sdd-init` / `/sdd-init` | 仓库还没有 SDD Loop 结构 | 创建项目规则和初始状态，不写业务内容 |
-| `/sdd` | `sdd-interview` / `/sdd-interview` | 启动产品或新一轮 Loop | 访谈并产出 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md`；每轮 Requirements 可选择标准或可随时退出的深挖问答 |
-| `/sdd upgrade` | `sdd-upgrade` / `/sdd-upgrade` | 已初始化仓库需要补新门禁、治理角色、分流或审计 AGENTS | 无损升级现有 SDD 约定，不伪造历史、不静默替换项目规则 |
-| `/sdd full-test`、`/sdd-full-test` | `sdd-full-test` / `/sdd-full-test` | 需要运行项目测试套件采集可校验证据包 | 执行测试、收集证据包与可在包外锚定的 SHA-256 清单，提议 `verification.md` 待审事实与扩展索赔 |
-| `/sdd review` | `sdd-review` / `/sdd-review` | Implementation 和自动化验证已经完成 | 架构对账、记录 change surface、AI 审查并准备人工审查包 |
-| `/sdd hotfix`、`/sdd-hotfix` | `sdd-hotfix` / `/sdd-hotfix` | 用户选择不推进普通 Loop 的独立紧急修复 | 一份 Hotfix 文档、独立审计、验证、AI Review 与人工签署 |
-| `/sdd debug`、`/sdd-debug` | `sdd-debug` / `/sdd-debug` | 测试环境中反复手测、修复和部署，完成后再统一收口 | 调试期无阶段文档和独立 Review；收口时反写 Debug Hotfix、更新长期架构并记录人工验收与 Review 豁免 |
-
-pi 使用第一列；其他宿主调用 Skill 名称或斜杠别名。
-
-### 状态对账
-
-```bash
-sdd-loop check
-sdd-loop check --repo <dir>
-sdd-loop check --stream <name>
-sdd-loop check --json
-```
-
-| 退出码 | 含义 |
-|---|---|
-| `0` | 干净 |
-| `1` | 声明与仓库事实矛盾 |
-| `2` | 判据不可读，不给结论 |
-
-启用 `governanceVersion: 1` 的项目还会检查审批/Continue、角色身份、审计哈希链、版本指纹、四项工程扩展和人工关闭门禁。已关闭 v1 Loop 保留当时的 Review 和签署关系；若能从 Review 提交重建签署时的交付指纹，后续工作区变化不再使旧 Loop 报红。历史内容无法重建时，Approver 可在明确核对差异并说明证据局限后一次性记录 `legacy_baseline_established`，不补造旧 Review 或签署。原 `closure_drift_accepted` 路径保留兼容。进行中的分流 v1 Loop 可用 `legacy_scope_reconciled` 记录完整原审查范围、精确文件、兄弟流变更归属、定向测试和差量 Review，原阶段和签署规则不自动迁移。发现 Hotfix 文件时追加 H1–H5 检查；`route: debug` 由同一组检查验证人工验收、最终证据和 Review 豁免。没有 Hotfix 文件时，现有文本、JSON、pi details 和退出码保持不变。
-
-### 动态工作流与治理 v2
-
-Loop、Hotfix、Debug 各有独立的 [`workflow.md`](workflows/loop/workflow.md)：[`Loop`](workflows/loop/workflow.md)、[`Hotfix`](workflows/hotfix/workflow.md)、[`Debug`](workflows/debug/workflow.md)。项目可在 `docs/sdd/workflows/<route>/workflow.md` 完整覆盖，流可在 `docs/sdd/workflows/<stream>/<route>/workflow.md` 完整覆盖；流级优先。阶段依赖图会校验，用户确认流程后固定定义和摘要，后续修改配置不重释既有工作。Loop 六份阶段文档仍必需。
-
-新工作启动前，将对应状态文件设为 `governanceVersion: 2`；v1 工作不会自动迁移。路由器根据任务推荐 Loop、Hotfix 或 Debug 并说明理由，用户确认后才能 `workflow start`。每轮人工测试只记录 `issue`、`fixScope`、`targetedTest`、`deployment`、`retest`；产品决定出现时当场确认，稳定候选后只重新确认受影响条款。最终测试、架构对账、Review 与提交者本人/指定角色/可选/免签依固定依赖图执行；Review 和签署豁免必须在流程定义中预先声明。已关闭工作核对归档文档、审计链和历史源码快照；交付区间另行做提交溯源。
-
-```bash
-sdd-loop workflow recommend --request-file /tmp/request.txt --repo .
-sdd-loop workflow show --route loop --repo .
-sdd-loop workflow start --route loop --confirmation-json /tmp/route.json --repo .
-sdd-loop workflow record --run docs/loops/loop-1 --event-json /tmp/event.json --repo .
-sdd-loop workflow close --run docs/archive/loop-1-done --event-json /tmp/close.json --repo .
-sdd-loop provenance check --base <base-commit> --head <delivery-commit> --repo .
-```
-
-`provenance check` 是只读检查，将提交区间内每条变更归为 `covered`、`drifted`、`unattributed` 或 `ambiguous`；交付门禁应要求全部为 `covered`。旧 CLI 遇到 `governanceVersion: 2` 会报不支持。
-
-`workflow close` 会把活跃工作目录移入锁定的归档目录，并返回归档后的 `runDir`；后续检查和溯源使用这一新路径。既有 v1 Hotfix、Debug 的路径与规则不变。
-
-### 条款口径
-
-```bash
-sdd-loop guide
-sdd-loop guide --type specification.entity-table
-```
-
-在写条款前返回必填项、已有编号族和仓库内参考写法。pi 的未知 `/sdd` 子命令只返回用法。
-
-## 仓库结构
-
-```text
-your-project/
-├── AGENTS.md
-├── CLAUDE.md
-└── docs/
-    ├── architecture/
-    │   └── overview.md 或 <stream>.md
-    ├── loops/
-    │   └── [<stream>/]
-    │       ├── status.md
-    │       ├── hotfix/
-    │       │   ├── hotfix-YYYYMMDD-NN.md
-    │       │   └── audit/hotfix-YYYYMMDD-NN/<writer-id>.jsonl
-    │       └── loop-N/
-    │           ├── audit/
-    │           │   └── <writer-id>.jsonl
-    │           ├── requirements.md
-    │           ├── architecture.md
-    │           ├── specification.md
-    │           ├── tasks.md
-    │           ├── implementation.md
-    │           └── verification.md
-    ├── sdd/extensions/        # 可选项目扩展；*.opt-in.md 控制启用
-    └── archive/
-        └── [<stream>/]hotfix/  # 关闭后的 Hotfix 文档与 audit/
-```
-
-`sdd-loop check` 自动发现单流或分流结构；自定义路径使用 `--status-file` 和 `--archive-dir`。
+仅安装 Skill 的环境运行 `npx skills@latest update -g`。完整门禁和证据约定见各 [Skill](skills/sdd-init) 与[项目架构](CLAUDE.md)。
 
 ## 许可
 
-MIT License — 见 [LICENSE](LICENSE)。
+MIT — [LICENSE](LICENSE)。
