@@ -93,7 +93,7 @@ test("README 的宿主表 ≡ 安装计划支持的宿主——加了宿主漏�
 test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
   const allowed = new Set([
     ...DEFAULT_CONVENTION.stageDocs,
-    "status", "agents", "candidate", "claude", "readme", "overview", "stream", "opt-in",
+    "status", "agents", "candidate", "claude", "readme", "overview", "stream", "opt-in", "workflow",
   ]);
   for (const { file, text } of READMES) {
     for (const [, name] of text.matchAll(/\b([a-z][a-z-]*)\.md\b/g)) {
@@ -105,14 +105,13 @@ test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
   }
 });
 
-test("双语 README 用图表说明治理停点和四项工程扩展", () => {
+test("双语 README 先说明 AI-DLC 的五阶段和反馈循环", () => {
   for (const { file, text } of READMES) {
-    assert.ok(text.includes("awaiting_continue"), `${file} 没画出审批后的停止状态`);
-    assert.ok(text.includes("audit/*.jsonl"), `${file} 没说明分片审计落点`);
-    for (const extension of ["Testing", "PBT", "Security", "Resiliency"]) {
-      assert.ok(text.includes(extension), `${file} 漏了 ${extension}`);
+    assert.ok(text.includes("https://awslabs.github.io/aidlc-workflows/guide/04-phases-and-stages/"), `${file} 没有标明 AI-DLC 流程来源`);
+    for (const phase of ["Initialization", "Ideation", "Inception", "Construction", "Operation"]) {
+      assert.ok(text.includes(phase), `${file} 漏了 ${phase}`);
     }
-    assert.ok(text.includes("seed"), `${file} 没说明无 PBT 库时的确定性证据`);
+    assert.match(text, /Feedback|反馈/, `${file} 没有说明运行反馈进入下一轮`);
   }
 });
 
@@ -187,19 +186,17 @@ test("README 同时提供完整安装、Skills-only 安装和对应更新方式"
   }
 });
 
-test("双语 README 给出治理能力预检，并明确项目规则不自动更新工具", () => {
+test("双语 README 给出可配置流程的能力预检", () => {
   for (const { file, text } of READMES) {
-    assert.ok(text.includes("sdd-loop capabilities --require governance@1"), `${file} 漏了治理能力预检`);
+    assert.ok(text.includes("sdd-loop capabilities --require governance@2"), `${file} 漏了流程能力预检`);
     assert.ok(text.includes("--host"), `${file} 没要求验证当前宿主的 Skill 安装`);
-    assert.match(text, /never auto-update tools|不会自动更新工具/, `${file} 没写自动更新边界`);
   }
 });
 
-test("双语 README 说明 AI Review 人类选择、只读 subagent 与换 Agent handoff", () => {
+test("双语 README 说明 AI 审查和人工验收", () => {
   for (const { file, text } of READMES) {
-    assert.ok(text.includes("subagent"), `${file} 没说明当前 Agent 的审查隔离`);
-    assert.ok(text.includes("handoff"), `${file} 没说明换 Agent 的交接`);
-    assert.match(text, /human choice|人类选择/, `${file} 没说明审查前由人类选择`);
+    assert.ok(text.includes("AI Review"), `${file} 没说明代码审查`);
+    assert.ok(text.includes("Human Review"), `${file} 没说明人工验收`);
   }
 });
 
@@ -220,49 +217,37 @@ test("README 承诺的本地文件都存在（安装步骤与链接不许断）"
   }
 });
 
-test("双语 README 同步覆盖核心生命周期、安装路由与 AGENTS 分类", () => {
+test("双语 README 同步覆盖核心流程和安装路由", () => {
   const sharedClaims = [
-    "sdd-review",
-    "Worktree Ready",
-    "Architecture Baseline",
-    "Architecture Reconciliation",
+    "Initialization",
+    "Ideation",
+    "Inception",
+    "Construction",
+    "Operation",
+    "Loop",
+    "Hotfix",
+    "Debug",
     "AI Review",
     "Human Review",
-    "READY_FOR_HUMAN_REVIEW",
     "--hermes",
     "--openclaw",
     "/sdd upgrade",
     "/sdd review",
     "/sdd-hotfix",
-    "hotfix@1",
     "/sdd-debug",
-    "debug@1",
-    "KEEP_SDD_CANONICAL",
-    "NOT_TESTABLE_SAFELY",
-    "OPENCLAW_STATE_DIR",
   ];
   for (const claim of sharedClaims) {
     for (const { file, text } of READMES) assert.ok(text.includes(claim), `${file} 漏了 ${claim}`);
   }
 });
 
-test("Worktree、架构对账和审查流程位于安装说明之前", () => {
+test("产品流程位于安装说明之前", () => {
   for (const { file, lang, text } of READMES) {
     const install = text.indexOf(lang === "zh" ? "## 安装" : "## Installation");
     assert.ok(install > 0, `${file} 没有安装章节`);
-    for (const claim of ["Worktree Ready", "Architecture Reconciliation", "AI Review", "Human Review"]) {
+    for (const claim of ["Initialization", "Ideation", "Inception", "Construction", "Operation", "Loop", "Hotfix", "Debug"]) {
       const index = text.indexOf(claim);
       assert.ok(index >= 0 && index < install, `${file} 的 ${claim} 没有在安装前讲清楚`);
-    }
-    for (const evidence of [
-      "stream + Loop",
-      "implementation.md",
-      "verification.md",
-      "READY_FOR_HUMAN_REVIEW",
-      "CHANGES_REQUIRED",
-      "NOT_REVIEWABLE_SAFELY",
-    ]) {
-      assert.ok(text.includes(evidence), `${file} 漏了 ${evidence}`);
     }
   }
 });

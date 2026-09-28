@@ -19,6 +19,17 @@ const GOVERNANCE_RESOURCES = Object.freeze([
   ...BUILTIN_EXTENSIONS.map((name) => `skills/sdd-init/references/extensions/${name}.md`),
 ]);
 
+const V2_RESOURCES = Object.freeze([
+  "scripts/lib/workflow.mjs",
+  "src/workflow/definition.js",
+  "src/workflow/runtime.js",
+  "src/workflow/source.js",
+  "src/workflow/provenance.js",
+  "src/validation/workflow-check.js",
+  "skills/sdd-route/SKILL.md",
+  ...["loop", "hotfix", "debug"].map((route) => `workflows/${route}/workflow.md`),
+]);
+
 const HOTFIX_RESOURCES = Object.freeze([
   "scripts/lib/governance.mjs",
   "scripts/lib/hotfix.mjs",
@@ -43,6 +54,7 @@ const FULL_TEST_RESOURCES = Object.freeze([
 ]);
 
 const GOVERNANCE_SKILLS = Object.freeze(["sdd-init", "sdd-interview", "sdd-upgrade", "sdd-review"]);
+const V2_SKILLS = Object.freeze([...GOVERNANCE_SKILLS, "sdd-route"]);
 const HOTFIX_SKILLS = Object.freeze(["sdd-hotfix"]);
 const DEBUG_SKILLS = Object.freeze(["sdd-debug"]);
 const FULL_TEST_SKILLS = Object.freeze(["sdd-full-test"]);
@@ -110,6 +122,10 @@ export function buildCapabilityReport(packageRoot, options = {}) {
     }
   });
   const protocolVersion = Number(GOVERNANCE_VERSION);
+  const missingV2Resources = V2_RESOURCES.filter((rel) => {
+    try { return !fs.statSync(path.join(root, rel)).isFile(); }
+    catch { return true; }
+  });
   const missingHotfixResources = HOTFIX_RESOURCES.filter((rel) => {
     try {
       return !fs.statSync(path.join(root, rel)).isFile();
@@ -144,7 +160,10 @@ export function buildCapabilityReport(packageRoot, options = {}) {
     capabilities: {
       governance: {
         available: missingResources.length === 0,
-        supportedProtocolVersions: [protocolVersion],
+        supportedProtocolVersions: [protocolVersion, 2],
+        versionReadiness: {
+          2: { available: missingResources.length === 0 && missingV2Resources.length === 0, missingResources: [...missingResources, ...missingV2Resources] },
+        },
         checks: ["C6", "C7", "C8", "C9", "C10"],
         engineeringExtensions: [...BUILTIN_EXTENSIONS],
         missingResources,
@@ -172,6 +191,7 @@ export function buildCapabilityReport(packageRoot, options = {}) {
     env: options.env ?? process.env,
   };
   const hostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: GOVERNANCE_SKILLS });
+  const v2HostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: V2_SKILLS });
   const hotfixHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: HOTFIX_SKILLS });
   const debugHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: DEBUG_SKILLS });
   const fullTestHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: FULL_TEST_SKILLS });
@@ -179,6 +199,7 @@ export function buildCapabilityReport(packageRoot, options = {}) {
     report.hostReadiness = hostReadiness;
     report.hostReadinessByCapability = {
       governance: hostReadiness,
+      "governance@2": v2HostReadiness,
       hotfix: hotfixHostReadiness,
       debug: debugHostReadiness,
       "full-test": fullTestHostReadiness,
@@ -196,12 +217,13 @@ export function evaluateCapabilityRequirement(report, requirement) {
   const version = Number(rawVersion);
   const capability = report.capabilities[name];
   if (!capability) return { ok: false, name, version, reason: `未知能力：${name}@${version}。` };
-  if (!capability.available) {
+  const versionState = capability.versionReadiness?.[version] ?? capability;
+  if (!versionState.available) {
     return {
       ok: false,
       name,
       version,
-      reason: `${name}@${version} 不完整；缺少：${capability.missingResources.join(" / ") || "运行组件"}。`,
+      reason: `${name}@${version} 不完整；缺少：${versionState.missingResources.join(" / ") || "运行组件"}。`,
     };
   }
   if (!capability.supportedProtocolVersions.includes(version)) {
@@ -212,7 +234,7 @@ export function evaluateCapabilityRequirement(report, requirement) {
       reason: `${name}@${version} 不受支持；可用协议：${capability.supportedProtocolVersions.join(" / ") || "无"}。`,
     };
   }
-  const hostReadiness = report.hostReadinessByCapability?.[name] ?? report.hostReadiness;
+  const hostReadiness = report.hostReadinessByCapability?.[`${name}@${version}`] ?? report.hostReadinessByCapability?.[name] ?? report.hostReadiness;
   if (!hostReadiness) {
     return {
       ok: false,

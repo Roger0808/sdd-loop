@@ -5,6 +5,8 @@ description: 在已有 SDD Loop 仓库中进行人工测试驱动的连续调试
 
 # SDD Debug
 
+状态文件为 `governanceVersion: 2` 时，先加载 `sdd-route`，展示 Debug 推荐理由并取得用户确认，再固定 Debug `workflow.md`。每轮手测追加 `cycle` 短事实，稳定候选后执行最终测试、对账、预声明 Review 豁免与动态签署；关闭时回溯 archived 的 `debug.md`。下列 `debug@1`、`debug_closed` 与 v1 固定豁免格式仅用于既有 v1 Debug。
+
 这是低仪式、人工测试主导的修复通道。它与普通 Loop 并行，不修改 `activeLoop`、`nextLoop`、`gateStage` 或 `gateState`。它明确放弃独立 AI Review，不能把人工点测表述成完整回归、安全审查或 `READY_FOR_HUMAN_REVIEW`。
 
 ## 1. 启动：记录基线后直接调试

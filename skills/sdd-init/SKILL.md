@@ -27,7 +27,7 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 
 ### 0. 先确认这是不是冷启动
 
-先运行 `sdd-loop capabilities --require governance@1 --host <当前宿主>`（Claude Code=`claude`、Codex/Kimi Code 等共享 Agent Skills 宿主=`agents`、OpenClaw=`openclaw`、Hermes=`hermes`、pi=`pi`）。命令不存在、退出非 0、协议不受支持或宿主未就绪时停止，指向 `https://github.com/Roger0808/sdd-loop` 的 README 更新步骤；未经用户明确授权不得自动下载、安装、链接或切换版本。能力预检成功后再继续：
+新仓库先运行 `sdd-loop capabilities --require governance@2 --host <当前宿主>`（Claude Code=`claude`、Codex/Kimi Code 等共享 Agent Skills 宿主=`agents`、OpenClaw=`openclaw`、Hermes=`hermes`、pi=`pi`）。已有 v1 项目继续使用 `sdd-loop capabilities --require governance@1 --host <当前宿主>`，不自动迁移。命令不存在、退出非 0、协议不受支持或宿主未就绪时停止，指向 `https://github.com/Roger0808/sdd-loop` 的 README 更新步骤；未经用户明确授权不得自动下载、安装、链接或切换版本。能力预检成功后再继续：
 
 跑 `sdd-loop check`（pi 里是 `sdd_loop_check` 工具）：
 
@@ -112,7 +112,7 @@ description: 把一个还没有 SDD Loop 结构的仓库初始化成按 SDD Loop
 
 ### 6. 落状态文件（`activeLoop: null` 起步，**不要建 Loop 目录**）
 
-`docs/loops/status.md`（或用户指定的路径），front-matter **至少要有 `activeLoop`**——缺了它 check 直接判读不出来：
+`docs/loops/status.md`（或用户指定的路径），front-matter **至少要有 `activeLoop`**——缺了它 check 直接判读不出来。新仓库默认用治理 v2；先确认当前宿主具备 `governance@2` 与 `sdd-route`，再按下例建立状态。已有 v1 工作按原规则继续，不自动迁移：
 
 ```markdown
 ---
@@ -123,11 +123,7 @@ lastClosedLoop: null
 nextLoop: 1
 nextPhase: requirements
 updatedAt: <YYYY-MM-DD>
-governanceVersion: 1
-gateStage: requirements
-gateState: in-progress
-gateFingerprint: null
-enabledExtensions: testing,pbt,security,resiliency
+governanceVersion: 2
 roleRequester: <邮箱，多个用逗号分隔>
 roleProduct: <邮箱，多个用逗号分隔>
 roleArchitect: <邮箱，多个用逗号分隔>
@@ -141,7 +137,7 @@ roleApprover: <邮箱，多个用逗号分隔>
 当前没有活跃 Loop。下一步：由用户明确目标后，为 Loop 1 产出 requirements。
 ```
 
-**初始化时没有活跃 Loop，这是事实不是缺陷。** AGENTS.md 自己就写着 `activeLoop: null` 的含义——下一步只能在用户明确新目标后为 `nextLoop` 创建 Requirements，那正是访谈第 0 站的活。
+**初始化时没有活跃 Loop，这是事实不是缺陷。** AGENTS.md 自己就写着 `activeLoop: null` 的含义——下一步先根据任务推荐并确认流程；选择 Loop 后才为 `nextLoop` 创建 Requirements。v2 的阶段和签署策略读取锁定的 `workflow.md`；上例角色邮箱供指定角色签署和历史 v1 信息保留，不代表审批人写死。
 
 三个坑，实测都踩过：
 

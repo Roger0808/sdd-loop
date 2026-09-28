@@ -38,7 +38,7 @@ test("capabilities --json 给出可机读 governance@1 与完整打包资源", (
   const report = JSON.parse(result.out);
   assert.equal(report.schemaVersion, 1);
   assert.equal(report.capabilities.governance.available, true);
-  assert.deepEqual(report.capabilities.governance.supportedProtocolVersions, [1]);
+  assert.deepEqual(report.capabilities.governance.supportedProtocolVersions, [1, 2]);
   assert.deepEqual(report.capabilities.governance.checks, ["C6", "C7", "C8", "C9", "C10"]);
   assert.deepEqual(report.capabilities.governance.engineeringExtensions, ["testing", "pbt", "security", "resiliency"]);
   assert.deepEqual(report.capabilities.governance.missingResources, []);
@@ -90,6 +90,9 @@ test("--require governance@1 同时验证协议与当前宿主 Skill 安装", ()
   const supported = run(["--require", "governance@1", "--host", "agents"], { home });
   assert.equal(supported.code, EXIT_OK, supported.err);
   assert.match(supported.out, /governance@1 可用/);
+  const supportedV2 = run(["--require", "governance@2", "--host", "agents"], { home });
+  assert.equal(supportedV2.code, EXIT_OK);
+  assert.match(supportedV2.out, /governance@2 可用/);
 
   const missingHome = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-capability-missing-home-"));
   fs.mkdirSync(path.join(missingHome, ".codex"), { recursive: true });
@@ -100,7 +103,7 @@ test("--require governance@1 同时验证协议与当前宿主 Skill 安装", ()
   for (const args of [
     ["--require", "governance@1"],
     ["--require", "governance@1", "--host", "unknown"],
-    ["--require", "governance@2", "--host", "agents"],
+    ["--require", "governance@3", "--host", "agents"],
     ["--require", "unknown@1", "--host", "agents"],
     ["--require", "governance", "--host", "agents"],
     ["--require"],

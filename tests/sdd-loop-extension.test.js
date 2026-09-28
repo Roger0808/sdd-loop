@@ -250,6 +250,15 @@ test("/sdd 未知子命令只返回用法，不误入访谈", { skip }, async ()
   assert.ok(!sent[0].includes("sdd-interview"));
 });
 
+test("/sdd 任务描述推荐 Debug 并要求确认，不直接启动旧固定流程", { skip }, async () => {
+  const { commands, sent } = await loadExtension();
+  await commands.get("sdd").handler("人工手测发现 bug，反复修复并部署测试环境", { cwd: "/tmp", ui: { notify() {} } });
+  assert.equal(sent.length, 1);
+  assert.match(sent[0], /推荐 debug/);
+  assert.match(sent[0], /确认/);
+  assert.doesNotMatch(sent[0], /请加载 sdd-interview/);
+});
+
 // ---------------------------------------------------------------- 判定只有一份（源码锁）
 
 test("判定只有一份：扩展 import 判定与口径，不许自己再长一份", () => {

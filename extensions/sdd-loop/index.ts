@@ -31,6 +31,7 @@ import { buildRepoCheckReport } from "../../src/validation/loop-check.js";
 import { guideFor, listGuideTypes } from "../../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../../src/spec-guide/id-scan.js";
 import { pickExample } from "../../src/spec-guide/example.js";
+import { recommendWorkflow } from "../../src/workflow/definition.js";
 
 function truncate(text: string): string {
 	const r = truncateHead(text, { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES });
@@ -273,7 +274,7 @@ export default function (pi: ExtensionAPI) {
 		"做 preflight 探活并在 finally 路径执行 teardown 平账清理，最后生成带 manifest.sha256 的 Evidence Bundle，并把清单摘要记录到包外作为复核锚点，" +
 		"并整理 verification.md 的待审补丁与 extensionClaims。不要替我下通过结论，也不要自动确认门禁。";
 
-	const SDD_USAGE = "用法：/sdd [init|upgrade|review|hotfix|debug|full-test]；不带子命令时开始访谈。";
+	const SDD_USAGE = "用法：/sdd [任务描述|init|upgrade|review|hotfix|debug|full-test]；任务描述先推荐流程并请用户确认。";
 
 	pi.registerCommand("sdd", {
 		description: "SDD Loop：访谈，或用 init / upgrade / review 进入初始化、升级和审查",
@@ -289,7 +290,11 @@ export default function (pi: ExtensionAPI) {
 					: FULL_TEST_MESSAGE;
 				return pi.sendUserMessage(msg);
 			}
-			if (parts.length !== 1) return pi.sendUserMessage(SDD_USAGE);
+			if (parts.length !== 1 || !["init", "upgrade", "review", "hotfix", "debug"].includes(sub)) {
+				if (parts.length === 1 && /^[a-z][a-z0-9-]*$/i.test(raw)) return pi.sendUserMessage(SDD_USAGE);
+				const recommendation = recommendWorkflow(raw);
+				return pi.sendUserMessage(`根据任务描述推荐 ${recommendation.route}：${recommendation.reason} 请先向我展示选择理由并取得确认，再加载相应 Skill，按已固定的 workflow.md 启动；确认前不要写入工作流状态。原始任务：${raw}`);
+			}
 			const messages: Record<string, string> = {
 				init: INIT_MESSAGE,
 				upgrade: UPGRADE_MESSAGE,
