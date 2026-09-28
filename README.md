@@ -35,13 +35,35 @@ sdd-loop applies this intent-to-feedback path to repository work. It offers thre
 
 | Route | Use it for | Path |
 |---|---|---|
-| **Loop** | A feature or planned change | A 7-station interview produces `requirements.md`, `architecture.md`, `specification.md`, and `tasks.md`; implementation and verification complete the six-document Loop. |
+| **Loop** | A feature or planned change | A 7-station interview leads through requirements, design, implementation, and verification. |
 | **Hotfix** | A focused urgent repair | One independent repair document, followed by validation and acceptance. |
 | **Debug** | Repeated deployment and manual testing | Diagnose, fix, deploy, and retest until the result is ready for closeout. |
 
 Describe the task to pi's `/sdd` command or the `sdd-route` Skill on another host. It recommends a route with a reason; **you confirm the choice** before work starts. The project can choose the order of deployment, manual testing, verification, and review in its [workflow definition](workflows/loop/workflow.md).
 
-A Loop starts with a confirmed need, moves through design and implementation in an isolated worktree, then collects test and deployment evidence. The team reviews a stable candidate: AI Review examines the code, and Human Review records the acceptance decision. Feedback can start another Loop, Hotfix, or Debug session. The six stage documents are `requirements.md`, `architecture.md`, `specification.md`, `tasks.md`, `implementation.md`, and `verification.md`.
+### sdd-loop delivery flow
+
+```mermaid
+flowchart TD
+    A["Describe work"] --> B["Recommend Loop, Hotfix, or Debug"]
+    B --> C{"Confirm route"}
+    C -->|Loop| L["Confirm requirements, then design and plan"]
+    C -->|Hotfix| H["Define one focused repair"]
+    C -->|Debug| D["Diagnose a manual-test failure"]
+    L --> I["Implement or fix"]
+    H --> I
+    D --> I
+    I --> P["Deploy to test environment"]
+    P --> M["Manual test"]
+    M -->|More issues| I
+    M -->|Stable candidate| T["Final tests and architecture reconciliation"]
+    T --> R["AI Review or declared waiver"]
+    R --> S["Sign-off according to workflow"]
+    S --> X["Archive and check delivery"]
+    X -.->|New feedback| A
+```
+
+This shows the built-in order; a project's workflow definition controls the actual stage dependencies. A Loop keeps six documents: `requirements.md`, `architecture.md`, `specification.md`, `tasks.md`, `implementation.md`, and `verification.md`. AI Review examines the stable candidate; Human Review records the acceptance decision.
 
 ## Installation
 

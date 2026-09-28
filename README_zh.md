@@ -35,13 +35,35 @@ sdd-loop 将这条“意图到反馈”的主线用于仓库交付，并提供�
 
 | 流程 | 适用场景 | 路径 |
 |---|---|---|
-| **Loop** | 新功能或计划内改动 | 七站访谈形成 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md`；实施与验证后组成六份阶段文档。 |
+| **Loop** | 新功能或计划内改动 | 七站访谈引导需求、设计、实施与验证。 |
 | **Hotfix** | 范围明确的紧急修复 | 一份独立修复文档，随后验证和验收。 |
 | **Debug** | 反复部署与人工测试 | 排查、修复、部署和复测，直到可以收口。 |
 
 向 pi 的 `/sdd` 命令或其他宿主的 `sdd-route` Skill 描述任务。它会说明推荐哪条流程及理由；**你确认后才启动**。项目可在 [workflow 定义](workflows/loop/workflow.md) 中安排部署、人工测试、验证和审查的顺序。
 
-一轮 Loop 从明确的需求开始，经过设计和独立 worktree 中的实施，再收集测试与部署证据。候选版本稳定后，AI Review 审查代码，Human Review 记录验收决定。反馈可以开启下一轮 Loop、Hotfix 或 Debug。六份阶段文档是 `requirements.md`、`architecture.md`、`specification.md`、`tasks.md`、`implementation.md`、`verification.md`。
+### sdd-loop 交付流程
+
+```mermaid
+flowchart TD
+    A["描述任务"] --> B["推荐 Loop、Hotfix 或 Debug"]
+    B --> C{"确认流程"}
+    C -->|Loop| L["确认需求，完成设计与计划"]
+    C -->|Hotfix| H["确定单项修复"]
+    C -->|Debug| D["排查人工测试发现的问题"]
+    L --> I["实施或修复"]
+    H --> I
+    D --> I
+    I --> P["部署测试环境"]
+    P --> M["人工测试"]
+    M -->|仍有问题| I
+    M -->|候选版本稳定| T["最终测试与架构对账"]
+    T --> R["AI Review 或预声明豁免"]
+    R --> S["按流程签署或免签"]
+    S --> X["归档并核对交付"]
+    X -.->|新的反馈| A
+```
+
+图中是内置流程的顺序，项目的 workflow 定义决定实际阶段依赖。一轮 Loop 保留六份文档：`requirements.md`、`architecture.md`、`specification.md`、`tasks.md`、`implementation.md`、`verification.md`。AI Review 审查稳定候选，Human Review 记录验收决定。
 
 ## 安装
 
