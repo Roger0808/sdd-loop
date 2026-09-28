@@ -239,6 +239,10 @@ test("/sdd upgrade 与 /sdd review 分别加载对应 skill", { skip }, async ()
     assert.equal(sent.length, 1);
     assert.ok(sent[0].includes(expected), `/sdd ${sub} 没加载 ${expected}`);
     assert.ok(!sent[0].includes(forbidden), `/sdd ${sub} 误入 ${forbidden}`);
+    if (sub === "upgrade") {
+      assert.ok(sent[0].includes("已关闭 v1 工作切换后续 v2"), "/sdd upgrade 没向用户提供 v2 升级动作");
+      assert.ok(sent[0].includes("活跃 v1 Loop 不得"), "/sdd upgrade 没保留活跃 v1 隔离边界");
+    }
   }
 });
 

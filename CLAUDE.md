@@ -15,7 +15,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 
 - `skills/sdd-init/`：把一个仓库初始化成按 SDD Loop 运行（AGENTS.md 门禁规则 + CLAUDE.md 转引 + status.md），每个仓库一次。**AGENTS.md 是承重墙**——`loop-check.js` 执行的就是它写的那条「矛盾时停下请人确认」，没有它 check 是在判一个仓库从没声明过的约定。所以模板逐字复制，不许现写。
 - `skills/sdd-interview/`：七站提问 + 收官拆任务（冷启动仪器，每个产品一次）。**「七」是提问站数**；拆任务勘察为主、不算提问站，编进站数会让人以为还有一轮问题要答。
-- `skills/sdd-upgrade/`：**已经**在跑 SDD Loop 的仓库的条款对齐、形态迁移（单流 → 分流）和 AGENTS Candidate 审计。删除、移动、合并必须逐项授权。
+- `skills/sdd-upgrade/`：**已经**在跑 SDD Loop 的仓库的条款对齐、形态迁移（单流 → 分流）、已关闭 v1 流的后续 v2 切换和 AGENTS Candidate 审计。删除、移动、合并必须逐项授权。
 - `skills/sdd-review/`：实施后的架构反向回写、change surface、AI Review 前的人类选择与只读 subagent/跨 Agent handoff、人工审查包；不修复、不替人签字。
 - `skills/sdd-hotfix/`：独立 Hotfix 文档、隔离实施、验证与只读审查通道；不占用普通 Loop，也不替人签字。
 - `skills/sdd-debug/`：人工测试驱动的连续排查、修复与测试环境部署；“开始收口”后反写 Debug 路由 Hotfix、按最终代码更新长期架构并显式豁免独立 Review。
@@ -90,7 +90,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd` 任务描述动态推荐及 init、upgrade、review、hotfix、debug、full-test 工作流路由；未知子命令只返回用法。 |
 | Skill · init | `skills/sdd-init/` | SKILL.md + AGENTS/CLAUDE/Baseline 模板 + `AGENTS.md.CHANGELOG.md` 与 `AGENTS.md.AUDIT.md`。模板不用会被宿主自动读走的真名。 |
 | Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编）。Requirements 每轮开局可选标准或内建的深挖问答，深挖不依赖外部 skill、可随时退出且不改变审批门禁。第 0 站**先定流、再捞 backlog**——顺序反了就筛不出该摆哪几条 |
-| Skill · 升级 | `skills/sdd-upgrade/SKILL.md` | 老仓库的条款对齐、形态迁移和逐项授权的 AGENTS Candidate 审计。 |
+| Skill · 升级 | `skills/sdd-upgrade/SKILL.md` | 老仓库的条款对齐、形态迁移、已关闭 v1 流的后续 v2 切换和逐项授权的 AGENTS Candidate 审计。 |
 | Skill · 审查 | `skills/sdd-review/SKILL.md` | 实施指纹、架构回写、change surface、人类选择 reviewer、只读 subagent/跨 Agent handoff 和人工审查门禁。 |
 | Skill · Hotfix | `skills/sdd-hotfix/SKILL.md` | 独立文档、隔离分支、验证、独立只读审查与人工签署。 |
 | Skill · Debug | `skills/sdd-debug/SKILL.md` | 调试期不建文档或 Review；收口时回溯 Hotfix、架构反写、人工测试验收与显式 Review 豁免。 |

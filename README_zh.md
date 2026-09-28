@@ -113,7 +113,7 @@ sdd-loop workflow show --route loop --repo .
 |---|---|---|
 | `/sdd init` | [`sdd-init`](skills/sdd-init) | 建立项目规则和状态入口。 |
 | `/sdd` | [`sdd-interview`](skills/sdd-interview)、[`sdd-route`](skills/sdd-route) | 启动或继续工作；推荐流程并等待确认。 |
-| `/sdd upgrade` | [`sdd-upgrade`](skills/sdd-upgrade) | 对齐已有项目规则或迁移为分流。 |
+| `/sdd upgrade` | [`sdd-upgrade`](skills/sdd-upgrade) | 对齐规则、迁移为分流，或让已关闭的 v1 流从下一项工作起使用 v2。 |
 | `/sdd review` | [`sdd-review`](skills/sdd-review) | 更新 Architecture Baseline，准备 AI Review 与 Human Review 材料。 |
 | `/sdd-hotfix` | [`sdd-hotfix`](skills/sdd-hotfix) | 独立紧急修复；pi 也支持 `/sdd hotfix`。 |
 | `/sdd-debug` | [`sdd-debug`](skills/sdd-debug) | 反复手测与修复；pi 也支持 `/sdd debug`。 |
@@ -134,7 +134,7 @@ CLI 提供六个用户命令：
 
 从 [Loop](workflows/loop/workflow.md)、[Hotfix](workflows/hotfix/workflow.md) 或 [Debug](workflows/debug/workflow.md) 的流程定义开始。项目可在 `docs/sdd/workflows/<route>/workflow.md` 完整覆盖，流也可在 `docs/sdd/workflows/<stream>/<route>/workflow.md` 定义自己的流程。定义中安排阶段依赖、Review 策略和签署者；已启动的工作沿用启动时的定义。
 
-`AGENTS.md` 保存项目规则。已有仓库使用 `/sdd upgrade` 时，Agent 会提交规则候选供人工审阅。它更新项目约定；本机工具另行更新。完整治理约定见各 [Skill](skills/sdd-init) 和[维护者架构说明](CLAUDE.md)。
+`AGENTS.md` 保存项目规则。已有仓库使用 `/sdd upgrade` 时，Agent 会提交规则候选供人工审阅。v1→v2 只在目标流的 v1 工作关闭后切换，让下一项工作按 v2 启动，不改写旧审计。项目约定与本机工具分别更新。完整治理约定见各 [Skill](skills/sdd-init) 和[维护者架构说明](CLAUDE.md)。
 
 完整安装的更新方式：
 

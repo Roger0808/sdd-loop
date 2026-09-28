@@ -250,7 +250,8 @@ export default function (pi: ExtensionAPI) {
 
 	const UPGRADE_MESSAGE =
 		"请加载 sdd-upgrade skill，先用 sdd_loop_check 和 git status 建立干净基线，" +
-		"再让我选择条款对齐、单流转分流或 AGENTS 审计与无损精简。" +
+		"再让我选择条款对齐、单流转分流、治理 v1 启用、已关闭 v1 工作切换后续 v2，或 AGENTS 审计与无损精简。" +
+		"活跃 v1 Loop 不得靠改 governanceVersion 迁入 v2。" +
 		"已有 AGENTS.md 的删除、移动和合并必须逐项请我确认。";
 
 	const REVIEW_MESSAGE =

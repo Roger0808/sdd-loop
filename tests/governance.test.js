@@ -13,6 +13,7 @@ import {
 } from "../src/governance/protocol.js";
 import { buildLoopCheckReport, buildRepoCheckReport } from "../src/validation/loop-check.js";
 import { checkProvenance } from "../src/workflow/provenance.js";
+import { startWorkflow } from "../src/workflow/runtime.js";
 import { reconstructLegacyReceipt } from "../src/governance/legacy-receipt.js";
 
 const CLI = path.resolve(import.meta.dirname, "../scripts/sdd-loop.mjs");
@@ -138,6 +139,75 @@ function closeLoop(root, { stream = null, deliveryScope = null } = {}) {
     .replace("lastClosedLoop: null", "lastClosedLoop: 1"));
   event(root, { type: "loop_closed", role: "approver", stage: "verification", summary: "关闭" }, options);
 }
+
+function selectV2ForClosedStream(root, stream = null) {
+  const statusRel = stream ? `docs/loops/${stream}/status.md` : "docs/loops/status.md";
+  const original = fs.readFileSync(path.join(root, statusRel), "utf8");
+  assert.match(original, /activeLoop: null/);
+  assert.match(original, /governanceVersion: 1/);
+  write(root, statusRel, original
+    .replace("governanceVersion: 1", "governanceVersion: 2")
+    .replace(/^gate(?:Stage|State|Fingerprint): .*\n/gm, ""));
+}
+
+test("真实关闭的 v1 Loop 经逐流切换后保留旧审计，并可启动下一轮 v2", () => {
+  const root = repo({ gateStage: "verification" });
+  closeLoop(root);
+  const before = buildLoopCheckReport(root);
+  assert.equal(before.ok, true, JSON.stringify(before.problems, null, 2));
+  const auditDir = path.join(root, "docs/archive/loop-1-done/audit");
+  const auditFiles = fs.readdirSync(auditDir).sort();
+  const audit = auditFiles.map((name) => fs.readFileSync(path.join(auditDir, name), "utf8"));
+  selectV2ForClosedStream(root);
+  git(root, ["add", "docs"]);
+  git(root, ["commit", "-qm", "select v2 for next loop"]);
+  const after = buildLoopCheckReport(root);
+  assert.equal(after.ok, true, JSON.stringify(after.problems, null, 2));
+  assert.deepEqual(fs.readdirSync(auditDir).sort(), auditFiles);
+  assert.deepEqual(auditFiles.map((name) => fs.readFileSync(path.join(auditDir, name), "utf8")), audit);
+  const statusPath = path.join(root, "docs/loops/status.md");
+  fs.writeFileSync(statusPath, fs.readFileSync(statusPath, "utf8")
+    .replace("activeLoop: null", "activeLoop: 2")
+    .replace("nextLoop: 2", "nextLoop: 3"));
+  write(root, "docs/loops/loop-2/requirements.md", stage("draft"));
+  assert.equal(startWorkflow({ repoRoot: root, route: "loop", confirmation: { route: "loop", input: "确认下一轮" } }).runDir, "docs/loops/loop-2");
+});
+
+test("逐流选择 v2 不改变兄弟流的 v1 门禁", () => {
+  const root = streamsRepo(["maker", "legacy"]);
+  closeLoop(root, { stream: "maker" });
+  closeLoop(root, { stream: "legacy" });
+  assert.equal(buildRepoCheckReport(root).ok, true);
+  selectV2ForClosedStream(root, "maker");
+  write(root, "AGENTS.md", "# Rules\n\nNew work follows each stream's governanceVersion.\n");
+  git(root, ["add", "."]);
+  git(root, ["commit", "-qm", "select v2 for maker"]);
+  const report = buildRepoCheckReport(root);
+  assert.equal(report.ok, true, JSON.stringify(report.problems, null, 2));
+  assert.equal(buildRepoCheckReport(root, {}, { stream: "legacy" }).streams[0].report.ok, true);
+  assert.equal(buildRepoCheckReport(root, {}, { stream: "maker" }).streams[0].report.ok, true);
+});
+
+test("兄弟 v1 归档范围覆盖根 AGENTS 时，逐流升级须单独接受 C10 漂移", () => {
+  const root = streamsRepo(["maker", "legacy"]);
+  write(root, "AGENTS.md", "# Original rules\n");
+  git(root, ["add", "AGENTS.md"]);
+  closeLoop(root, { stream: "maker" });
+  closeLoop(root, { stream: "legacy", deliveryScope: ["AGENTS.md"] });
+  assert.equal(buildRepoCheckReport(root).ok, true);
+  selectV2ForClosedStream(root, "maker");
+  write(root, "AGENTS.md", "# Rules scoped by governanceVersion\n");
+  const legacyBeforeAcceptance = buildRepoCheckReport(root, {}, { stream: "legacy" }).streams[0].report;
+  assert.equal(legacyBeforeAcceptance.checks.find((entry) => entry.id === "C10").ok, false);
+  event(root, {
+    type: "closure_drift_accepted",
+    role: "approver",
+    summary: "接受根门禁版本分流",
+    reason: "核对兄弟流的 v1 门禁继续有效",
+    evidence: "核对 AGENTS.md 的版本分流改动与原签署后的差异",
+  }, { stream: "legacy" });
+  assert.equal(buildRepoCheckReport(root).ok, true);
+});
 
 test("stage approve 停在 awaiting-continue，后续独立 continue 才推进 nextPhase", () => {
   const root = repo();
