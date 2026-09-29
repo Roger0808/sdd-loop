@@ -126,7 +126,12 @@ test("README 里的 sdd-loop 命令都是真实子命令", () => {
     // 反引号可有可无：README 的命令主要出现在 ```bash 代码块里，那里没有反引号。
     // 变异测试实测过：只匹配行内代码时，往代码块里塞一个不存在的子命令抓不到。
     // 首字符必须是字母，`--type` 之类的选项才不会被当成子命令。
-    const cmds = new Set([...text.matchAll(/\bsdd-loop ([a-z][a-z-]*)/g)].map((m) => m[1]));
+    // 只识别代码块里的命令行或行内代码；正文里的 “sdd-loop applies ...” 不是 CLI 命令。
+    const fenced = [...text.matchAll(/```(?:bash|sh)\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n");
+    const cmds = new Set([
+      ...[...fenced.matchAll(/^sdd-loop ([a-z][a-z-]*)/gm)].map((m) => m[1]),
+      ...[...text.matchAll(/`sdd-loop ([a-z][a-z-]*)/g)].map((m) => m[1]),
+    ]);
     assert.ok(cmds.size > 0, `${file} 一条 sdd-loop 命令都不给，这条锁就空了`);
     for (const c of cmds) {
       assert.ok(real.has(c), `${file} 写了 \`sdd-loop ${c}\`，但 CLI 的子命令只有 ${[...real].join(" / ")}`);

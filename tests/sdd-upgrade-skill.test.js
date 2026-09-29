@@ -50,14 +50,50 @@ test("三份 skill 的分工表在场：前提 / 核心动作 / 安全规则逐�
   );
 });
 
-test("治理升级是独立可选动作，不伪造历史，也不给当前 Loop 继承豁免", () => {
+test("治理 v1 启用是独立可选动作，不伪造历史，也不给当前 Loop 继承豁免", () => {
   const text = skill();
-  assert.ok(text.includes("**治理升级**（可选）"));
+  assert.ok(text.includes("**治理 v1 启用**（可选）"));
   for (const field of ["governanceVersion: 1", "gateStage", "gateState", "gateFingerprint", "enabledExtensions"]) {
     assert.ok(text.includes(field), `治理升级缺字段 ${field}`);
   }
   assert.ok(text.includes("不为不存在的历史对话伪造事件"));
   assert.ok(text.includes("豁免不得延续到下一 Loop"));
+});
+
+test("/sdd upgrade 可把已关闭 v1 流切给后续 v2，且不迁移活跃工作或抹掉旧审计", () => {
+  const text = skill();
+  const start = text.indexOf("## 动作五：已关闭 v1 → 后续 v2");
+  assert.ok(start !== -1, "缺少 v1 到 v2 的升级动作");
+  const section = text.slice(start, text.indexOf("\n## ", start + 1));
+  for (const required of [
+    "activeLoop: null",
+    "没有未关闭的 v1 Hotfix 或 Debug",
+    "sdd-loop capabilities --require governance@2 --host <当前宿主>",
+    "2026-09-28 四条 v2 探针",
+    "governanceVersion: 1",
+    "旧审计与归档文档原样保留",
+    "旧 v1 C6-C10 的结果保留为切换前证据",
+    "等用户确认具体路线",
+  ]) assert.ok(section.includes(required), `v2 切换缺少保护：${required}`);
+  assert.ok(section.includes("不得通过手改 `governanceVersion` 绕过"));
+  assert.ok(section.indexOf("governance@2") < section.indexOf("状态候选"), "能力预检必须先于状态切换");
+  assert.ok(section.indexOf("取得用户对候选的明确确认") < section.indexOf("切换前后各保存"), "落地前必须展示候选并取得确认");
+  assert.ok(section.includes("仍为 v1 的兄弟流今后的工作仍走 v1"), "逐流升级不能让兄弟流的新工作误走 v2");
+  assert.ok(section.includes("动作五允许按这份已确认的 Candidate 定向改写冲突条款"), "旧固定门禁与 v2 冲突时必须允许获授权的定向改写");
+  assert.ok(section.includes("缺 `deliveryScope`") && section.includes("目录范围") && section.includes("旧 C10") && section.includes("closure_drift_accepted"), "根 AGENTS 改动可能使无范围或覆盖根规则的旧兄弟流 C10 漂移，必须预告并独立接受");
+  assert.ok(section.includes("不带 `--stream` 的全仓检查"), "逐流切换后仍须验其他流");
+});
+
+test("v2 模板按状态版本分派，保留未升级流后续 v1 工作", () => {
+  const template = fs.readFileSync(path.join(SKILLS_ROOT, "sdd-init/AGENTS.md.template"), "utf8");
+  assert.ok(template.includes("新工作按所属流状态文件的 `governanceVersion` 运行"));
+  assert.ok(template.includes("仍为 v1 的流，其当前及后续工作继续遵守 v1 门禁"));
+  assert.ok(template.includes("治理 v1 的 Loop 按以下顺序推进"));
+  assert.ok(template.includes("v1 每轮开局必须先运行"));
+  assert.ok(template.includes("v2 状态文件不再要求三个 `gate*` 字段"));
+  assert.ok(template.includes("以下条款整块属于 v1 治理协议"));
+  assert.ok(template.includes("`audit/*.jsonl`、固定审批/Continue、工程扩展和 C10 接受流程不得强加给 v2 工作"));
+  assert.ok(template.includes("v2 事件按锁定流程写入 `workflow.audit.jsonl`"));
 });
 
 // 四道门禁一条都不能少，每条对应一种「改到一半没法回头」。
@@ -215,7 +251,7 @@ test("边界：不删、不动业务内容、不替人确认、不解决矛盾�
   const section = text.slice(start);
   for (const [what, why] of [
     ["不删任何文件或目录", "删了就不可逆，包括你认为是残留的"],
-    ["不动业务内容", "阶段文档的正文和 status 都不是这份 skill 的事"],
+    ["不动业务内容", "阶段文档正文不应在升级中被改写"],
     ["不替用户确认", "迁移不改任何文档的确认状态"],
     ["不解决 check 报出来的矛盾", "那是人的活，而且动手前 check 就该是绿的"],
     ["不碰别的仓库", "一次只升一个"],
