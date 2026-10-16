@@ -2,10 +2,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { validateSoloClosureReceipt } from "../solo/validation.js";
 
 import { readFrontMatter, isBlank } from "../loop/front-matter.js";
-import { resolveConvention, conventionForStream } from "../loop/convention.js";
-import { discoverStreams } from "../loop/repo-scan.js";
+import { resolveConvention, conventionForStream, conventionForDemand } from "../loop/convention.js";
+import { discoverStreams, discoverDemands, validDemandId } from "../loop/repo-scan.js";
 import { hotfixAuditDir, normalizeHotfixId, scanHotfixes } from "../hotfix/layout.js";
 import { reconstructLegacyReceipt } from "./legacy-receipt.js";
 import { captureSource, compareSource, changedFiles, safeRelative } from "../workflow/source.js";
@@ -162,17 +163,44 @@ export function scanProjectExtensions(repoRoot) {
   return { root, definitions, optIns, issues };
 }
 
-function resolveTarget(repoRoot, stream, overrides = {}, { allowClosed = false } = {}) {
+function resolveTarget(repoRoot, stream, demand, overrides = {}, { allowClosed = false } = {}) {
   const root = path.resolve(repoRoot);
-  const found = discoverStreams(root, overrides);
-  if (found.mode === "streams" && !stream) {
-    throw new Error(`这是分流仓库，请用 --stream 指明一条流：${found.streams.join(" / ")}`);
+  if (stream && demand) throw new Error("--stream 与 --demand 不能同时使用。");
+  const foundDemands = discoverDemands(root, overrides);
+  if (foundDemands.invalidDemands.length) {
+    throw new Error(`存在非法需求目录名：${foundDemands.invalidDemands.join(" / ")}。`);
   }
-  if (stream && !found.streams.includes(stream)) {
-    throw new Error(`没有名为 ${stream} 的流；可用流：${found.streams.join(" / ") || "(无)"}`);
+  let selectedDemand = demand;
+  if (!stream && !selectedDemand && foundDemands.demands.length) {
+    const branch = git(root, ["branch", "--show-current"]);
+    const matches = branch ? foundDemands.demands.filter((name) => {
+      const statusText = readFile(path.join(root, conventionForDemand(name, overrides).statusFile));
+      const parsed = statusText === null ? null : readFrontMatter(statusText);
+      return parsed?.ok && String(parsed.meta.branch ?? "").replace(/^refs\/heads\//, "") === branch.replace(/^refs\/heads\//, "");
+    }) : [];
+    if (matches.length > 1) throw new Error(`当前分支 ${branch} 同时匹配多个需求单元：${matches.join(" / ")}。`);
+    if (matches.length === 1) [selectedDemand] = matches;
+    const legacyStatus = path.join(root, resolveConvention(overrides).statusFile);
+    if (!selectedDemand && !fs.existsSync(legacyStatus)) {
+      throw new Error(`无法按当前分支${branch ? ` ${branch}` : ""}唯一识别需求；请用 --demand 指明：${foundDemands.demands.join(" / ")}。`);
+    }
   }
-  if (found.mode === "single" && stream) throw new Error("这是单流仓库，不能使用 --stream。");
-  const convention = stream ? conventionForStream(stream, overrides) : resolveConvention(overrides);
+  let convention;
+  if (selectedDemand) {
+    if (!validDemandId(selectedDemand)) throw new Error(`需求 ID 不合法：${selectedDemand}`);
+    if (!foundDemands.demands.includes(selectedDemand)) throw new Error(`没有名为 ${selectedDemand} 的需求单元；可用需求：${foundDemands.demands.join(" / ") || "(无)"}`);
+    convention = conventionForDemand(selectedDemand, overrides);
+  } else {
+    const found = discoverStreams(root, overrides);
+    if (found.mode === "streams" && !stream) {
+      throw new Error(`这是分流仓库，请用 --stream 指明一条流：${found.streams.join(" / ")}`);
+    }
+    if (stream && !found.streams.includes(stream)) {
+      throw new Error(`没有名为 ${stream} 的流；可用流：${found.streams.join(" / ") || "(无)"}`);
+    }
+    if (found.mode === "single" && stream) throw new Error("这是单流仓库，不能使用 --stream。");
+    convention = stream ? conventionForStream(stream, overrides) : resolveConvention(overrides);
+  }
   const statusPath = path.join(root, convention.statusFile);
   const statusText = readFile(statusPath);
   if (statusText === null) throw new Error(`状态文件读不出来：${convention.statusFile}`);
@@ -204,6 +232,7 @@ function resolveTarget(repoRoot, stream, overrides = {}, { allowClosed = false }
   return {
     root,
     stream: stream || null,
+    demandId: selectedDemand || null,
     convention,
     statusPath,
     statusRel: convention.statusFile,
@@ -815,6 +844,7 @@ function transition(target, payload) {
       throw new Error("已归档 Loop 缺少当前审查指纹对应的 AI Review 或人工签署。");
     }
     if (!scopedValid && (!delivery || delivery !== review.deliveryFingerprint)) throw new Error("人工签署后代码、配置或长期文档发生变化，不能关闭 Loop。");
+    validateSoloClosureReceipt(target.loopDir);
     return { fields: { gateState: "closed" }, codeFingerprint: target.meta.gateFingerprint, deliveryFingerprint: scopedValid ? scopeEvent.sourceManifest.fingerprint : delivery };
   }
   if (type === "closure_drift_accepted") {
@@ -872,7 +902,7 @@ function transition(target, payload) {
   return { fields: {} };
 }
 
-export function recordGovernanceEvent({ repoRoot, stream = null, hotfix = null, eventFile, overrides = {} }) {
+export function recordGovernanceEvent({ repoRoot, stream = null, demand = null, hotfix = null, eventFile, overrides = {} }) {
   const raw = readFile(path.resolve(eventFile));
   if (raw === null) throw new Error(`event JSON 读不出来：${eventFile}`);
   let payload;
@@ -884,7 +914,7 @@ export function recordGovernanceEvent({ repoRoot, stream = null, hotfix = null, 
   validatePayload(payload);
   const target = hotfix
     ? resolveHotfixTarget(repoRoot, stream, hotfix, overrides)
-    : resolveTarget(repoRoot, stream, overrides, {
+    : resolveTarget(repoRoot, stream, demand, overrides, {
       allowClosed: ["loop_closed", "closure_drift_accepted", "legacy_baseline_established"].includes(payload.type),
     });
   if (!hotfix && payload.stage !== undefined && !target.convention.stageDocs.includes(String(payload.stage))) {
@@ -914,6 +944,7 @@ export function recordGovernanceEvent({ repoRoot, stream = null, hotfix = null, 
     actor: { ...actor, role },
     context: {
       stream: target.stream,
+      ...(target.demandId ? { demandId: target.demandId } : {}),
       loop: target.loop,
       ...(target.hotfix ? { hotfix: target.hotfix } : {}),
       stage: hotfix ? null : payload.stage || target.meta.gateStage,

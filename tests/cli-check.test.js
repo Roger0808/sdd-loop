@@ -72,6 +72,22 @@ function streamRepo(streams) {
   return commit(root);
 }
 
+function demandRepo(demands, currentBranch = "feature/current") {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-cli-d-"));
+  for (const [demandId, branch] of Object.entries(demands)) {
+    const demandStatus = statusFile().replace("document: loop-status\n", `document: loop-status\ndemandId: ${demandId}\nbranch: ${branch}\n`);
+    write(root, `docs/loops/demands/${demandId}/status.md`, demandStatus);
+    for (const stage of ["requirements", "architecture", "specification", "tasks"]) {
+      write(root, `docs/archive/demands/${demandId}/loop-0-cleanup/${stage}.md`, doc("archived"));
+    }
+  }
+  git(root, ["init", "-q"]);
+  git(root, ["checkout", "-qb", currentBranch]);
+  git(root, ["add", "-A"]);
+  git(root, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"]);
+  return root;
+}
+
 const okStream = { files: { "loop-1/requirements.md": doc("confirmed") } };
 
 function run(args) {
@@ -189,4 +205,41 @@ test("--stream 不是布尔开关：流名不许被当成开关的值吃掉", ()
   const root = streamRepo({ maker: okStream, "admin-console": { status: POISONED } });
   const { err } = run(["--repo", root, "--stream", "maker"]);
   assert.ok(!err.includes("没有名为"), `maker 是真实存在的流，不该被报成不存在：${err.trim()}`);
+});
+
+// ---------------------------------------------------------------- demand unit
+
+test("demand：当前分支自动选择，--json 给出选中的需求单元", () => {
+  const root = demandRepo({ "REQ-101": "feature/current", "REQ-102": "feature/other" });
+  const result = run(["--repo", root, "--json"]);
+  assert.equal(result.code, EXIT_OK, result.err);
+  const report = JSON.parse(result.out);
+  assert.equal(report.mode, "demands");
+  assert.equal(report.autoSelectedDemand, "REQ-101");
+  assert.deepEqual(report.demands.map((item) => item.name), ["REQ-101"]);
+});
+
+test("demand：显式跨分支选择成功并渲染提示", () => {
+  const root = demandRepo({ "REQ-101": "feature/current", "REQ-102": "feature/other" });
+  const result = run(["--repo", root, "--demand", "REQ-102"]);
+  assert.equal(result.code, EXIT_OK, result.err);
+  assert.match(result.out, /需求单元：REQ-102/);
+  assert.match(result.out, /当前分支 feature\/current/);
+  assert.match(result.out, /绑定分支 feature\/other/);
+});
+
+test("demand：无法自动识别时要求 --demand，不伪装成冷启动", () => {
+  const root = demandRepo({ "REQ-101": "feature/a", "REQ-102": "feature/b" });
+  const result = run(["--repo", root]);
+  assert.equal(result.code, EXIT_UNUSABLE);
+  assert.match(result.err, /--demand/);
+  assert.match(result.err, /REQ-101/);
+  assert.ok(!`${result.out}${result.err}`.includes("还没有 SDD Loop 结构"));
+});
+
+test("demand：--demand 与 --stream 互斥", () => {
+  const root = demandRepo({ "REQ-101": "feature/current" });
+  const result = run(["--repo", root, "--demand", "REQ-101", "--stream", "maker"]);
+  assert.equal(result.code, EXIT_UNUSABLE);
+  assert.match(result.err, /不能同时使用/);
 });

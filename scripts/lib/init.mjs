@@ -15,6 +15,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -189,7 +190,7 @@ export function renderPlan(plan, { applied = null } = {}) {
 
 // ---------------------------------------------------------------- 入口
 
-export function runInit(args, { home = process.env.HOME, packageRoot, stdout, stderr, exit }) {
+export function runInit(args, { home = process.env.HOME || os.homedir(), packageRoot, stdout, stderr, exit }) {
   if (!args.global) {
     stderr(
       [

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "protocol": "sdd-solo@1",
+  "demandId": "<demand-id>",
+  "deliveryMode": "<full|openspec-light>",
+  "state": "verified",
+  "manifestPath": "<relative-manifest-path>",
+  "manifestSha256": "sha256:<digest>",
+  "authorityCommit": "<commit>",
+  "participants": [],
+  "primaryEvidence": [],
+  "verifiedAt": "<RFC3339>"
+}

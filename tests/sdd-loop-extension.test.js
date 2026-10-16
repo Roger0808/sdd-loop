@@ -71,6 +71,22 @@ test("扩展面：恰好两个工具 + /sdd 命令（12 工具 → 2 工具）",
   assert.ok(commands.has("sdd-hotfix"), "/sdd-hotfix 命令没注册");
   assert.ok(commands.has("sdd-debug"), "/sdd-debug 命令没注册");
   assert.ok(commands.has("sdd-full-test"), "/sdd-full-test 命令没注册");
+  assert.ok(commands.has("sdd-solo"), "/sdd-solo 命令没注册");
+});
+
+test("/sdd solo 与 /sdd-solo 都加载 sdd-solo，并保持单一主仓会话", { skip }, async () => {
+  const { commands, sent } = await loadExtension();
+  await commands.get("sdd").handler("solo", {});
+  await commands.get("sdd-solo").handler("", {});
+  assert.equal(sent.length, 2);
+  for (const message of sent) {
+    assert.match(message, /sdd-solo skill/);
+    assert.match(message, /当前仓库是主仓/);
+    assert.match(message, /所有对话和命令都留在本会话/);
+    assert.match(message, /远程 master/);
+    assert.match(message, /只读追溯包/);
+    assert.match(message, /不要在参与仓启动独立 SDD Loop/);
+  }
 });
 
 test("/sdd hotfix 与 /sdd-hotfix 都加载 sdd-hotfix，且先只读确认", { skip }, async () => {
@@ -271,6 +287,8 @@ test("判定只有一份：扩展 import 判定与口径，不许自己再长一
   assert.ok(src.includes('from "../../src/spec-guide/dictionary.js"'), "口径必须来自 dictionary.js");
   assert.ok(src.includes('from "../../src/spec-guide/id-scan.js"'), "编号族必须来自 id-scan.js");
   assert.ok(src.includes('from "../../src/spec-guide/example.js"'), "参考写法选取策略与 CLI 共享（example.js），不复制");
+  assert.match(src, /demand:\s*Type\.Optional/, "check 工具必须暴露 demand 参数");
+  assert.match(src, /demand:\s*params\.demand/, "扩展必须把 demand 交给共享判定层");
   // 反向：front-matter 解析不许用旧的那份（静默跳过冲突标记的那一份）。
   // 锁 import 来源而不是字符串出现——注释里解释「为什么不用它」是合法且必要的。
   assert.ok(!/from\s+["'][^"']*spec-file/.test(src), "不许 import src/render/spec-file.js——它的解析器会静默吞冲突标记");

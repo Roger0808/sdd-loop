@@ -1,3 +1,5 @@
+import os from "node:os";
+
 import { buildCapabilityReport, evaluateCapabilityRequirement } from "../../src/governance/capabilities.js";
 import { EXIT_OK, EXIT_UNUSABLE } from "./exit-codes.mjs";
 
@@ -11,7 +13,7 @@ function render(report) {
   return lines.join("\n");
 }
 
-export function runCapabilities(args, io, { packageRoot, home = process.env.HOME, env = process.env }) {
+export function runCapabilities(args, io, { packageRoot, home = process.env.HOME || os.homedir(), env = process.env }) {
   const report = buildCapabilityReport(packageRoot, { host: args.host, home, env });
   const hasRequirement = Object.hasOwn(args, "require");
   const evaluation = hasRequirement ? evaluateCapabilityRequirement(report, args.require) : null;

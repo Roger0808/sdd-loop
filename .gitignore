@@ -25,3 +25,5 @@ skills/*
 !skills/sdd-debug/
 !skills/sdd-full-test/
 !skills/sdd-route/
+!skills/sdd-solo/
+!skills/sdd-solo/**

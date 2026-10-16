@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "demandId": "<demand-id>",
+  "repositoryId": "<repository-id>",
+  "baseline": { "branch": "master", "commit": "<commit>" },
+  "branch": {
+    "expected": "<canonical-branch>",
+    "actual": "<actual-branch>",
+    "disposition": "<created|reused|exception>",
+    "exceptionReason": null
+  },
+  "implementation": { "ref": "<branch-or-commit>", "fingerprint": "sha256:<digest>" },
+  "verification": { "outcome": "PENDING", "evidence": [] },
+  "review": { "outcome": "PENDING", "evidence": null },
+  "dependencies": [],
+  "ready": false,
+  "generatedAt": "<RFC3339>"
+}

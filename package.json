@@ -25,6 +25,7 @@
       "./skills/sdd-interview",
       "./skills/sdd-upgrade",
       "./skills/sdd-review",
+      "./skills/sdd-solo",
       "./skills/sdd-hotfix",
       "./skills/sdd-debug",
       "./skills/sdd-full-test",

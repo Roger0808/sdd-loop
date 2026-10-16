@@ -9,11 +9,13 @@ description: 在 SDD Loop 实施和自动化验证完成后，反向更新长期
 
 ## 入口门禁
 
-1. 运行 `sdd-loop check`，只处理当前流的活跃 Loop。状态不可读或声明与事实矛盾时停止。
+1. 运行 `sdd-loop check`。demand unit 仓库优先按当前分支自动选择，显式处理另一需求时使用 `--demand <demandId>`；分流仓库才使用 `--stream <stream>`。只处理选中需求单元或流的活跃 Loop，状态不可读或声明与事实矛盾时停止。
 2. Requirements、Architecture、Specification 和 Tasks 必须已确认，Implementation 必须存在。
 3. `implementation.md` 必须记录基线分支、基线 commit、当前分支和任务范围。存量 Loop 缺少基线时向用户确认，不从 merge-base 或日期猜。
 4. 自动化测试、构建、部署和必要人工检查已运行，或者未运行项已如实记录。`skip` 不等于通过。
 5. 读取 `sdd-init/references/extensions/`，逐项复核 Testing、PBT、Security、Resiliency；项目自定义扩展按 `enabledExtensions` 加载。没有 PBT 库不构成 N/A 理由。
+
+如果当前需求由 `sdd-solo` 跨多个仓库交付，本 skill 的审查对象仍是主仓中登记的同一个需求：先为每个参与仓生成独立代码指纹、Verification 与只读 AI Review 结论，再对跨仓契约、数据链路、兼容窗口和发布顺序做聚合审查。所有操作由主仓会话发起；不要求用户切换到参与仓运行第二套 SDD 命令。任一参与仓结论不是 `READY_FOR_HUMAN_REVIEW` 时，聚合结论不得就绪。
 
 ## 固定本次审查对象
 

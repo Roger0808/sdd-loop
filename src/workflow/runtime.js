@@ -3,9 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { readFrontMatter, isBlank } from "../loop/front-matter.js";
-import { discoverStreams } from "../loop/repo-scan.js";
-import { conventionForStream, resolveConvention } from "../loop/convention.js";
+import { currentGitBranch, discoverDemands, discoverStreams, readStatusMeta, validDemandId } from "../loop/repo-scan.js";
+import { conventionForDemand, conventionForStream, resolveConvention } from "../loop/convention.js";
 import { hashAuditEvent } from "../governance/protocol.js";
+import { validateSoloClosureReceipt } from "../solo/validation.js";
 import { digest, loadWorkflow, parseWorkflow, ROUTES, LOOP_DOCS } from "./definition.js";
 import { captureSource, changedFiles, compareSource, fileReceipt, gitHead, gitIdentity, safeRelative } from "./source.js";
 
@@ -34,32 +35,55 @@ function assertRegular(file) {
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`工作流文件必须是普通文件：${file}`);
 }
 
-function stateContext(root, stream, overrides = {}) {
+function stateContext(root, stream, demand, overrides = {}) {
   safeRelative(overrides.statusFile ?? "docs/loops/status.md");
   safeRelative(overrides.archiveDir ?? "docs/archive");
-  const found = discoverStreams(root, overrides);
-  if (found.mode === "streams" && (!stream || !found.streams.includes(stream))) throw new Error(`请用 --stream 指定有效流：${found.streams.join(" / ")}`);
-  if (found.mode === "single" && stream) throw new Error("单流仓库不接受 --stream。");
-  const convention = stream ? conventionForStream(stream, overrides) : resolveConvention(overrides);
+  if (stream && demand) throw new Error("--stream 与 --demand 不能同时使用。");
+  const foundDemands = discoverDemands(root, overrides);
+  if (foundDemands.invalidDemands.length) throw new Error(`存在非法需求目录名：${foundDemands.invalidDemands.join(" / ")}。`);
+  let selectedDemand = demand;
+  if (selectedDemand && (!validDemandId(selectedDemand) || !foundDemands.demands.includes(selectedDemand))) {
+    throw new Error(`没有有效的需求单元 ${selectedDemand}；可用需求：${foundDemands.demands.join(" / ") || "(无)"}。`);
+  }
+  if (!stream && !selectedDemand && foundDemands.demands.length) {
+    const branch = currentGitBranch(root);
+    const matches = branch ? foundDemands.demands.filter((name) => {
+      const meta = readStatusMeta(root, conventionForDemand(name, overrides).statusFile);
+      return String(meta?.branch ?? "").replace(/^refs\/heads\//, "") === branch.replace(/^refs\/heads\//, "");
+    }) : [];
+    if (matches.length > 1) throw new Error(`当前分支 ${branch} 同时匹配多个需求单元：${matches.join(" / ")}。`);
+    if (matches.length === 1) [selectedDemand] = matches;
+    if (!selectedDemand && !fs.existsSync(path.join(root, resolveConvention(overrides).statusFile))) {
+      throw new Error(`无法按当前分支${branch ? ` ${branch}` : ""}唯一识别需求；请用 --demand 指明：${foundDemands.demands.join(" / ")}。`);
+    }
+  }
+  let convention;
+  if (selectedDemand) convention = conventionForDemand(selectedDemand, overrides);
+  else {
+    const found = discoverStreams(root, overrides);
+    if (found.mode === "streams" && (!stream || !found.streams.includes(stream))) throw new Error(`请用 --stream 指定有效流：${found.streams.join(" / ")}`);
+    if (found.mode === "single" && stream) throw new Error("单流仓库不接受 --stream。");
+    convention = stream ? conventionForStream(stream, overrides) : resolveConvention(overrides);
+  }
   const file = path.join(root, convention.statusFile);
   const parsed = readFrontMatter(fs.readFileSync(file, "utf8"));
   if (!parsed.ok) throw new Error("状态文件 front-matter 不可信。");
   if (String(parsed.meta.governanceVersion) !== "2") throw new Error("新工作需要 governanceVersion: 2；v1 工作使用原有规则或显式差量核对入口。");
-  return { convention, meta: parsed.meta, statusRel: convention.statusFile };
+  return { convention, meta: parsed.meta, statusRel: convention.statusFile, demandId: selectedDemand || null };
 }
 
 function lockedStateContext(root, lock) {
-  const overrides = {
-    statusFile: lock.stream
-      ? path.join(path.dirname(path.dirname(lock.statusRel)), path.basename(lock.statusRel))
-      : lock.statusRel,
-    archiveDir: lock.stream ? path.dirname(lock.archiveDir) : lock.archiveDir,
-  };
-  const context = stateContext(root, lock.stream, overrides);
-  if (context.statusRel !== lock.statusRel || context.convention.archiveDir !== lock.archiveDir) {
-    throw new Error("工作流锁定的状态或归档目录与当前仓库不一致。");
-  }
-  return context;
+  safeRelative(lock.statusRel);
+  safeRelative(lock.archiveDir);
+  const convention = resolveConvention({
+    statusFile: lock.statusRel,
+    archiveDir: lock.archiveDir,
+    requiredStatusFields: lock.demandId ? ["activeLoop", "demandId", "branch"] : ["activeLoop"],
+  });
+  const parsed = readFrontMatter(fs.readFileSync(path.join(root, lock.statusRel), "utf8"));
+  if (!parsed.ok || String(parsed.meta.governanceVersion) !== "2") throw new Error("工作流锁定的状态文件不可信或不再使用 governanceVersion: 2。");
+  if (lock.demandId && String(parsed.meta.demandId ?? "") !== lock.demandId) throw new Error("工作流锁定的 demandId 与状态文件不一致。");
+  return { convention, meta: parsed.meta, statusRel: lock.statusRel, demandId: lock.demandId ?? null };
 }
 
 function runDirectory(root, route, id, stream, context) {
@@ -138,11 +162,11 @@ export function readWorkflowRun(root, dir) {
   return { lock, ...audit, dir };
 }
 
-export function startWorkflow({ repoRoot, stream = null, route, id = null, confirmation, overrides = {} }) {
+export function startWorkflow({ repoRoot, stream = null, demand = null, route, id = null, confirmation, overrides = {} }) {
   const root = path.resolve(repoRoot);
   if (!ROUTES.includes(route)) throw new Error(`未知流程：${route}`);
   if (confirmation?.route !== route || !String(confirmation?.input ?? "").trim()) throw new Error("启动前需要用户明确确认推荐流程；confirmation.route 和 input 必须对应本次选择。");
-  const context = stateContext(root, stream, overrides);
+  const context = stateContext(root, stream, demand, overrides);
   const dir = runDirectory(root, route, id, stream, context);
   const abs = path.join(root, dir);
   assertSafeRunPath(root, dir);
@@ -158,7 +182,7 @@ export function startWorkflow({ repoRoot, stream = null, route, id = null, confi
   assertRegular(path.join(abs, "workflow.lock.json"));
   assertRegular(path.join(abs, "workflow.audit.jsonl"));
   if (fs.existsSync(abs) && route !== "loop" && fs.readdirSync(abs).length) throw new Error("工作目录已存在且非空。");
-  const workflow = loadWorkflow(root, route, { stream });
+  const workflow = loadWorkflow(root, route, { stream, demand: context.demandId });
   const actor = gitIdentity(root);
   const signerRole = workflow.definition.signerRole;
   const roleField = signerRole ? `role${signerRole[0].toUpperCase()}${signerRole.slice(1)}` : null;
@@ -166,10 +190,13 @@ export function startWorkflow({ repoRoot, stream = null, route, id = null, confi
   if (roleField && !roleSigners.length) throw new Error(`指定角色签署缺少状态文件中的 ${roleField} 映射。`);
   const lock = {
     version: 2,
-    id: route === "loop" ? `loop-${context.meta.activeLoop}` : id,
+    id: context.demandId
+      ? `demand-${context.demandId}-${route === "loop" ? `loop-${context.meta.activeLoop}` : id}`
+      : (route === "loop" ? `loop-${context.meta.activeLoop}` : id),
     route,
     ...(route === "loop" ? { loop: String(context.meta.activeLoop) } : {}),
     stream,
+    demandId: context.demandId,
     statusRel: context.statusRel,
     controlDir: stream ? path.dirname(path.dirname(context.statusRel)) : path.dirname(context.statusRel),
     archiveDir: context.convention.archiveDir,
@@ -238,6 +265,21 @@ function prerequisiteDone(root, run, stage, candidate) {
   return Boolean(done && (!FINAL_STAGES.has(stage) || done.payload.candidateId === candidate?.payload.candidateId));
 }
 
+function soloClosureSnapshot(root, run) {
+  if (run.lock.route !== "loop") return null;
+  const manifestFile = path.join(root, run.dir, "repositories.json");
+  if (!fs.existsSync(manifestFile)) return null;
+  const validation = validateSoloClosureReceipt(path.join(root, run.dir));
+  if (!validation.applicable) {
+    throw new Error("governance v2 的 Loop 中存在 Solo 参与清单时，deliveryMode 必须是 full；openspec-light 不进入 Loop 工作流。");
+  }
+  return {
+    manifestSha256: digest(fs.readFileSync(manifestFile)),
+    receiptPath: path.relative(path.join(root, run.dir), validation.receiptFile).split(path.sep).join("/"),
+    receiptSha256: digest(fs.readFileSync(validation.receiptFile)),
+  };
+}
+
 function candidateIsCurrent(root, run) {
   const candidate = latest(run.events, "candidate");
   if (!candidate) throw new Error("尚未固定稳定候选。");
@@ -251,6 +293,10 @@ function candidateIsCurrent(root, run) {
   }
   const compare = compareSource(root, candidate.payload.source);
   if (!compare.ok) throw new Error(`交付文件在候选后变化：${compare.drift.map((item) => item.path).join(" / ")}`);
+  const currentSoloClosure = soloClosureSnapshot(root, run);
+  if (JSON.stringify(candidate.payload.soloClosure ?? null) !== JSON.stringify(currentSoloClosure)) {
+    throw new Error("Solo 参与清单、追溯导出或收口凭据在候选后变化，必须重新固定候选并补充验证与审查。");
+  }
   return candidate;
 }
 
@@ -325,6 +371,8 @@ export function recordWorkflowEvent({ repoRoot, runDir, payload }) {
     }
     const source = changedDelivery(root, run, payload);
     clean.source = source;
+    const soloClosure = soloClosureSnapshot(root, run);
+    if (soloClosure) clean.soloClosure = soloClosure;
     const previousCandidate = latest(events, "candidate");
     if (previousCandidate) {
       const previous = new Map(previousCandidate.payload.source.files.map((item) => [item.path, item]));
@@ -396,6 +444,7 @@ export function closeWorkflow({ repoRoot, runDir, summary, evidence }) {
       if (!doc.ok || doc.meta.status !== "archived") throw new Error(`${stage}.md 尚未归档。`);
       archiveHashes[stage] = digest(fs.readFileSync(path.join(root, runDir, `${stage}.md`)));
     }
+    validateSoloClosureReceipt(path.join(root, runDir));
   }
   if (["hotfix", "debug"].includes(run.lock.route)) {
     const name = `${run.lock.route}.md`;

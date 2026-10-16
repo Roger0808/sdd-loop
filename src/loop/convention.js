@@ -67,6 +67,8 @@ export const DEFAULT_CONVENTION = Object.freeze({
     "document",
     "stream",
     "owner",
+    "demandId",
+    "branch",
     "governanceVersion",
     "gateStage",
     "gateState",
@@ -106,4 +108,20 @@ export function conventionForStream(streamName, overrides = {}) {
     statusFile: path.join(path.dirname(base.statusFile), streamName, path.basename(base.statusFile)),
     archiveDir: path.join(base.archiveDir, streamName),
   };
+}
+
+/**
+ * 多需求单元：每个 demand 拥有独立状态、Loop 目录、归档与治理审计。
+ * demand 是同一仓库中的交付并发轴；stream 仍表示同一仓库内可独立交付的子系统。
+ * 两者语义正交，但当前状态入口一次只选择其中一种布局，不做 demand/stream 双层嵌套。
+ */
+export function conventionForDemand(demandId, overrides = {}) {
+  const base = resolveConvention(overrides);
+  const demandRoot = path.join(path.dirname(base.statusFile), "demands", demandId);
+  return Object.freeze({
+    ...base,
+    statusFile: path.join(demandRoot, path.basename(base.statusFile)),
+    archiveDir: path.join(base.archiveDir, "demands", demandId),
+    requiredStatusFields: Object.freeze([...new Set([...base.requiredStatusFields, "demandId", "branch"])]),
+  });
 }

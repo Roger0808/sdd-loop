@@ -20,7 +20,8 @@ import path from "node:path";
 import { DEFAULT_CONVENTION } from "../src/loop/convention.js";
 
 const SKILLS_ROOT = path.resolve(import.meta.dirname, "../skills");
-const skill = () => fs.readFileSync(path.join(SKILLS_ROOT, "sdd-upgrade/SKILL.md"), "utf8");
+const skill = () =>
+  fs.readFileSync(path.join(SKILLS_ROOT, "sdd-upgrade/SKILL.md"), "utf8").replace(/\r\n/g, "\n");
 
 /** 变更记录的路径。**测试自己写一份**——upgrade 靠它工作，init 目录里存着它，两边各写一份才锁得住搬家。 */
 const CHANGELOG_REL = "sdd-init/AGENTS.md.CHANGELOG.md";
@@ -114,13 +115,16 @@ test("动手之前的四道门禁逐条在场（check 绿 / worktree 干净 / �
   assert.ok(section.includes("别人正在这个仓库里干活"), "第 4 道（确认没人在干活）丢了——迁形态会让别人手上的路径当场失效");
 });
 
-test("upgrade 在 check 前验证 governance@1，缺能力只提示更新不自动动宿主", () => {
+test("upgrade 按目标版本在 check 前验证治理能力，v1 切 v2 时两边都要可用", () => {
   const text = skill();
   const section = text.slice(text.indexOf("## 动手之前"), text.indexOf("## 动作一"));
-  const capability = section.indexOf("sdd-loop capabilities --require governance@1");
-  const check = section.indexOf("sdd-loop check", capability);
-  assert.ok(capability >= 0 && check > capability);
-  assert.ok(section.slice(capability, check).includes("--host <当前宿主>"), "upgrade 没验证当前宿主能否发现 Skills");
+  const v1 = section.indexOf("sdd-loop capabilities --require governance@1");
+  const v2 = section.indexOf("sdd-loop capabilities --require governance@2");
+  const check = section.indexOf("sdd-loop check", v2);
+  assert.ok(v1 >= 0 && v2 > v1 && check > v2);
+  assert.ok(section.slice(v1, check).includes("--host <当前宿主>"), "upgrade 没验证当前宿主能否发现 Skills");
+  assert.ok(section.includes("governanceVersion"));
+  assert.ok(section.includes("同时证明 `governance@1`") && section.includes("`governance@2` 可承接新工作"));
   assert.ok(section.includes("check 绿色不能替代能力预检"));
   assert.ok(section.includes("未经用户明确授权不得自动升级"));
 });

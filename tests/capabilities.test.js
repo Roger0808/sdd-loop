@@ -27,7 +27,7 @@ function installedAgentsHome() {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   for (const rel of pkg.pi.skills) {
     const source = path.resolve(ROOT, rel);
-    fs.symlinkSync(source, path.join(skillsDir, path.basename(source)));
+    fs.symlinkSync(source, path.join(skillsDir, path.basename(source)), process.platform === "win32" ? "junction" : "dir");
   }
   return home;
 }
@@ -51,6 +51,26 @@ test("capabilities --json 给出可机读 governance@1 与完整打包资源", (
   assert.equal(report.capabilities["full-test"].available, true);
   assert.deepEqual(report.capabilities["full-test"].supportedProtocolVersions, [1]);
   assert.deepEqual(report.capabilities["full-test"].missingResources, []);
+  assert.equal(report.capabilities.solo.available, true);
+  assert.deepEqual(report.capabilities.solo.supportedProtocolVersions, [1]);
+  assert.deepEqual(report.capabilities.solo.checks, ["participant-baseline", "repository-readiness", "aggregate-review", "release-readiness", "export-integrity"]);
+  assert.deepEqual(report.capabilities.solo.missingResources, []);
+});
+
+test("solo@1 只验证 Solo 自身资源；full 所需治理能力由选定版本另行预检", () => {
+  const home = installedAgentsHome();
+  assert.equal(run(["--require", "solo@1", "--host", "agents"], { home }).code, EXIT_OK);
+
+  fs.unlinkSync(path.join(home, ".agents", "skills", "sdd-interview"));
+  assert.equal(run(["--require", "solo@1", "--host", "agents"], { home }).code, EXIT_OK);
+  assert.equal(run(["--require", "governance@1", "--host", "agents"], { home }).code, EXIT_UNUSABLE);
+
+  const soloHome = installedAgentsHome();
+  fs.unlinkSync(path.join(soloHome, ".agents", "skills", "sdd-solo"));
+  assert.equal(run(["--require", "governance@1", "--host", "agents"], { home: soloHome }).code, EXIT_OK);
+  const missingSolo = run(["--require", "solo@1", "--host", "agents"], { home: soloHome });
+  assert.equal(missingSolo.code, EXIT_UNUSABLE);
+  assert.match(missingSolo.err, /sdd-solo/);
 });
 
 test("hotfix@1 独立验证 sdd-hotfix，新增 Skill 不使 governance@1 依赖它", () => {
