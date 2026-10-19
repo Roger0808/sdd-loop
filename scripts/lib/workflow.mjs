@@ -18,15 +18,15 @@ export function runWorkflow(args, io) {
     if (action === "recommend") {
       const request = fs.readFileSync(args["request-file"], "utf8");
       const result = recommendWorkflow(request);
-      io.stdout(`${JSON.stringify({ ...result, workflow: loadWorkflow(root, result.route, { stream: args.stream }) }, null, 2)}\n`);
+      io.stdout(`${JSON.stringify({ ...result, workflow: loadWorkflow(root, result.route, { stream: args.stream, demand: args.demand }) }, null, 2)}\n`);
     } else if (action === "show") {
       if (!ROUTES.includes(args.route)) throw new Error("--route 必须是 loop、hotfix 或 debug。");
-      io.stdout(`${JSON.stringify(loadWorkflow(root, args.route, { stream: args.stream }), null, 2)}\n`);
+      io.stdout(`${JSON.stringify(loadWorkflow(root, args.route, { stream: args.stream, demand: args.demand }), null, 2)}\n`);
     } else if (action === "start") {
       const overrides = {};
       if (args["status-file"]) overrides.statusFile = args["status-file"];
       if (args["archive-dir"]) overrides.archiveDir = args["archive-dir"];
-      const result = startWorkflow({ repoRoot: root, stream: args.stream, route: args.route, id: args.id, confirmation: jsonFile(args["confirmation-json"]), overrides });
+      const result = startWorkflow({ repoRoot: root, stream: args.stream, demand: args.demand, route: args.route, id: args.id, confirmation: jsonFile(args["confirmation-json"]), overrides });
       io.stdout(`${JSON.stringify(result, null, 2)}\n`);
     } else if (action === "record") {
       if (!args.run) throw new Error("缺少 --run 工作目录。");

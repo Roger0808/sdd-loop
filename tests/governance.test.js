@@ -72,9 +72,25 @@ function repo(options = {}) {
   return root;
 }
 
-function event(root, payload, { stream = null } = {}) {
+function event(root, payload, { stream = null, demand = null } = {}) {
   const file = write(fs.mkdtempSync(path.join(os.tmpdir(), "sdd-event-")), "event.json", JSON.stringify(payload));
-  return recordGovernanceEvent({ repoRoot: root, stream, eventFile: file });
+  return recordGovernanceEvent({ repoRoot: root, stream, demand, eventFile: file });
+}
+
+function demandRepo(demandId = "REQ-101", branch = "feature/req-101") {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-governance-demand-"));
+  const demandStatus = status().replace("document: loop-status", `document: loop-status\ndemandId: ${demandId}\nbranch: ${branch}`);
+  write(root, `docs/loops/demands/${demandId}/status.md`, demandStatus);
+  for (const name of ["requirements", "architecture", "specification", "tasks", "implementation", "verification"]) {
+    write(root, `docs/loops/demands/${demandId}/loop-1/${name}.md`, stage(name === "verification" ? "draft" : "confirmed"));
+  }
+  git(root, ["init", "-q"]);
+  git(root, ["config", "user.name", "Test User"]);
+  git(root, ["config", "user.email", "t@example.com"]);
+  git(root, ["checkout", "-qb", branch]);
+  git(root, ["add", "docs"]);
+  git(root, ["commit", "-qm", "demand fixture"]);
+  return root;
 }
 
 function statusMeta(root) {
@@ -721,6 +737,22 @@ test("分流仓库必须指定 stream，并把审计写入该流的 Loop", () =>
   );
   const result = event(root, { type: "change_decision", role: "architect", summary: "maker 决策" }, { stream: "maker" });
   assert.match(result.auditFile, /^docs\/loops\/maker\/loop-1\/audit\/.+\.jsonl$/);
+});
+
+test("需求单元可由分支自动识别，也可显式指定，并把 demandId 写入审计上下文", () => {
+  const demandId = "REQ-101";
+  const root = demandRepo(demandId);
+  const payload = { type: "change_decision", role: "architect", summary: "需求单元决策" };
+
+  const automatic = event(root, payload);
+  assert.match(automatic.auditFile, /^docs[\\/]loops[\\/]demands[\\/]REQ-101[\\/]loop-1[\\/]audit[\\/].+\.jsonl$/);
+  assert.equal(automatic.event.context.demandId, demandId);
+
+  git(root, ["checkout", "-qb", "maintenance"]);
+  const explicit = event(root, payload, { demand: demandId });
+  assert.equal(explicit.event.context.demandId, demandId);
+  const stored = fs.readFileSync(path.join(root, explicit.auditFile), "utf8").trim().split(/\r?\n/).at(-1);
+  assert.equal(JSON.parse(stored).context.demandId, demandId);
 });
 
 test("存量 Loop 用 governance_migrated 声明起点，不要求伪造早期阶段事件", () => {

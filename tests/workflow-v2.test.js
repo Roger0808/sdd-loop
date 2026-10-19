@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +13,7 @@ import { receiptAtCommit } from "../src/workflow/source.js";
 import { buildLoopCheckReport } from "../src/validation/loop-check.js";
 import { scanLoopRepo } from "../src/loop/repo-scan.js";
 import { buildGovernanceChecks } from "../src/validation/governance-check.js";
+import { releaseChecklistDigest } from "../src/solo/validation.js";
 
 function write(root, file, text) {
   const abs = path.join(root, file);
@@ -37,6 +39,80 @@ function fixture({ loop = false } = {}) {
 }
 function record(root, dir, stage, evidence = stage, extra = {}) {
   return recordWorkflowEvent({ repoRoot: root, runDir: dir, payload: { type: "stage_completed", stage, summary: stage, evidence, ...extra } });
+}
+
+function writeDemand(root, demandId, { branch = git(root, "branch", "--show-current"), loop = true } = {}) {
+  const demandRoot = `docs/loops/demands/${demandId}`;
+  write(root, `${demandRoot}/status.md`, `---\nactiveLoop: ${loop ? "1" : "null"}\nlastClosedLoop: null\nnextLoop: 2\ndemandId: ${demandId}\nbranch: ${branch}\ngovernanceVersion: 2\n---\n`);
+  if (loop) {
+    for (const doc of ["requirements", "architecture", "specification", "tasks", "implementation", "verification"]) {
+      write(root, `${demandRoot}/loop-1/${doc}.md`, `---\nstatus: confirmed\n---\n\n# ${doc}\n`);
+    }
+  }
+  return demandRoot;
+}
+
+function writeSoloClosure(root, runDir) {
+  const authorityCommit = git(root, "rev-parse", "HEAD");
+  const checklist = Buffer.from(`# 上线执行清单：D-SOLO
+
+- demandId: \`D-SOLO\`
+- 清单状态: \`ready\`
+
+## 发布项目与顺序
+
+- [ ] 1. \`main\` — 发布并完成冒烟验证。
+
+## SQL 脚本
+
+- [x] N/A — 原因：本需求不涉及数据库变更。
+
+## 项目配置
+
+- [x] N/A — 原因：本需求不涉及项目配置变更。
+
+## FilerUI 配置
+
+- [x] N/A — 原因：本需求不涉及 FilerUI 配置。
+
+## 发布后验证与回滚
+
+- [ ] 完成冒烟验证；失败时回滚到上一版本。
+`);
+  write(root, `${runDir}/release-checklist.md`, checklist);
+  const checklistSha256 = releaseChecklistDigest(checklist);
+  const manifest = {
+    demandId: "D-SOLO",
+    deliveryMode: "full",
+    primaryRepository: "main",
+    requirementsVersion: { commit: authorityCommit },
+    participants: [{ repositoryId: "main" }],
+    releaseChecklist: {
+      path: "release-checklist.md",
+      state: "ready",
+      preparedAt: "2026-01-01T00:00:00.000Z",
+      sha256: checklistSha256,
+    },
+    closure: { receiptPath: "solo-closure-receipt.json" },
+  };
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
+  write(root, `${runDir}/repositories.json`, manifestText);
+  const manifestSha256 = `sha256:${crypto.createHash("sha256").update(manifestText).digest("hex")}`;
+  const receipt = {
+    schemaVersion: 1,
+    protocol: "sdd-solo@1",
+    state: "verified",
+    demandId: manifest.demandId,
+    deliveryMode: "full",
+    authorityCommit,
+    manifestSha256,
+    participants: [],
+    primaryEvidence: [
+      { path: "repositories.json", sha256: manifestSha256 },
+      { path: "release-checklist.md", sha256: checklistSha256, hashMode: "checkbox-state-insensitive-v1" },
+    ],
+  };
+  write(root, `${runDir}/solo-closure-receipt.json`, `${JSON.stringify(receipt, null, 2)}\n`);
 }
 
 test("CLI 从文件推荐与确认流程，明确 v2 入口和参数错误", () => {
@@ -78,6 +154,42 @@ test("路线推荐需确认；项目与流级 workflow.md 完整覆盖并拒绝�
   assert.throws(() => readWorkflowRun(root, dir), /摘要不匹配/);
   const text = fs.readFileSync(path.resolve(import.meta.dirname, "../workflows/hotfix/workflow.md"), "utf8");
   assert.throws(() => parseWorkflow(text.replace("needs: [signoff]", "needs: [close]"), "hotfix"), /自引用|依赖环/);
+});
+
+test("v2 workflow 支持显式 demand、按分支自动识别和 demand 级定义覆盖", () => {
+  const explicitRoot = fixture();
+  const explicitDemandRoot = writeDemand(explicitRoot, "D-100");
+  const override = fs.readFileSync(path.resolve(import.meta.dirname, "../workflows/loop/workflow.md"), "utf8").replace("signoff: submitter", "signoff: none");
+  write(explicitRoot, "docs/sdd/workflows/demands/D-100/loop/workflow.md", override);
+  git(explicitRoot, "add", ".");
+  git(explicitRoot, "commit", "-qm", "add demand");
+  assert.equal(loadWorkflow(explicitRoot, "loop", { demand: "D-100" }).definition.signoff, "none");
+  const explicit = startWorkflow({ repoRoot: explicitRoot, demand: "D-100", route: "loop", confirmation: { route: "loop", input: "确认需求工作流" } });
+  assert.equal(explicit.runDir.replaceAll("\\", "/"), `${explicitDemandRoot}/loop-1`);
+  assert.equal(readWorkflowRun(explicitRoot, explicit.runDir).lock.demandId, "D-100");
+
+  const automaticRoot = fixture();
+  writeDemand(automaticRoot, "D-200");
+  git(automaticRoot, "add", ".");
+  git(automaticRoot, "commit", "-qm", "add branch demand");
+  const automatic = startWorkflow({ repoRoot: automaticRoot, route: "loop", confirmation: { route: "loop", input: "按当前分支继续" } });
+  assert.equal(readWorkflowRun(automaticRoot, automatic.runDir).lock.demandId, "D-200");
+});
+
+test("Solo full 的追溯凭据必须在 v2 候选前生成，且候选后漂移会使审查失效", () => {
+  const root = fixture({ loop: true });
+  const dir = startWorkflow({ repoRoot: root, route: "loop", confirmation: { route: "loop", input: "确认 Solo full" } }).runDir;
+  for (const stage of ["requirements", "architecture", "specification", "tasks", "implementation", "deployment", "manual_test", "verification"]) {
+    record(root, dir, stage, stage, stage === "requirements" ? { confirmation: "确认需求" } : {});
+  }
+  write(root, "src/app.js", "export const app = 2;\n");
+  write(root, `${dir}/repositories.json`, `${JSON.stringify({ demandId: "D-SOLO", deliveryMode: "full", primaryRepository: "main", requirementsVersion: { commit: git(root, "rev-parse", "HEAD") }, participants: [{ repositoryId: "main" }], closure: { receiptPath: "solo-closure-receipt.json" } }, null, 2)}\n`);
+  assert.throws(() => recordWorkflowEvent({ repoRoot: root, runDir: dir, payload: { type: "candidate", summary: "缺少导出凭据" } }), /收口凭据/);
+  writeSoloClosure(root, dir);
+  const candidate = recordWorkflowEvent({ repoRoot: root, runDir: dir, payload: { type: "candidate", summary: "追溯已固定" } });
+  assert.ok(candidate.candidateId);
+  fs.appendFileSync(path.join(root, dir, "solo-closure-receipt.json"), "\n");
+  assert.throws(() => record(root, dir, "final_test"), /Solo.*候选后变化|重新固定候选/);
 });
 
 test("多轮手测轻记录后一次正式审查；兄弟文件无关而共享文件变化要补审", () => {

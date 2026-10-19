@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * sdd-loop — 两件用户仪器（check / guide）和 Skills 内部治理事件入口的 CLI 表面。
+ * sdd-loop — check / guide / solo 等用户仪器和 Skills 内部治理事件入口的 CLI 表面。
  *
  * 判定不在这里：check 的结论一律来自 src/validation/loop-check.js，
  * guide 的口径一律来自 src/spec-guide/dictionary.js、编号族一律来自
@@ -19,6 +19,7 @@ import { runCapabilities } from "./lib/capabilities.mjs";
 import { runHotfix } from "./lib/hotfix.mjs";
 import { runFullTestCli } from "./lib/full-test.mjs";
 import { runWorkflow, runProvenance } from "./lib/workflow.mjs";
+import { runSolo } from "./lib/solo.mjs";
 import { guideFor, listGuideTypes } from "../src/spec-guide/dictionary.js";
 import { scanIdFamilies } from "../src/spec-guide/id-scan.js";
 import { pickExample } from "../src/spec-guide/example.js";
@@ -31,14 +32,15 @@ const AGENTS_SERVED = AGENTS_HOSTS.map((h) => h.label).join(" / ");
 const HELP = `sdd-loop — SDD Loop 仪器
 
 用法：
-  sdd-loop check [--repo <dir>] [--stream <name>] [--status-file <path>] [--archive-dir <path>] [--json]
+  sdd-loop check [--repo <dir>] [--stream <name> | --demand <id>] [--status-file <path>] [--archive-dir <path>] [--json]
   sdd-loop guide [--type <doc.clause>] [--repo <dir>] [--docs-dir <path>] [--json]
   sdd-loop capabilities [--require <name@protocol-version>] [--host <host>] [--json]
-  sdd-loop workflow recommend --request-file <path> [--repo <dir>] [--stream <name>]
-  sdd-loop workflow show --route <loop|hotfix|debug> [--repo <dir>] [--stream <name>]
-  sdd-loop workflow start --route <route> --confirmation-json <path> [--id <id>] [--stream <name>]
+  sdd-loop workflow recommend --request-file <path> [--repo <dir>] [--stream <name> | --demand <id>]
+  sdd-loop workflow show --route <loop|hotfix|debug> [--repo <dir>] [--stream <name> | --demand <id>]
+  sdd-loop workflow start --route <route> --confirmation-json <path> [--id <id>] [--stream <name> | --demand <id>]
   sdd-loop workflow record|close --run <relative-dir> --event-json <path> [--repo <dir>]
   sdd-loop provenance check --base <commit> --head <commit> [--repo <dir>]
+  sdd-loop solo check --manifest <path> [--repo <primary>] [--participant <id=path> ...] [--write-receipt] [--json]
   sdd-loop init -g [--claude] [--agents] [--openclaw] [--hermes] [--pi] [--show]
 
 init -g：把本包装进这台机器的 agent 宿主。五个落点：
@@ -59,6 +61,7 @@ check：把状态文件的「声明」和文件里的「事实」摆在一起比
   --status-file   状态文件相对仓库根的路径，默认 docs/loops/status.md
   --archive-dir   归档根目录，默认 docs/archive
   --stream        只判这一条流，退出码也只反映它
+  --demand        只判这一需求单元；不传时可按当前 Git 分支唯一匹配
   分流是发现出来的，不用配置：状态文件在根上就是单流；不在、而下一层的子目录里有，
   那些子目录就是各自独立的流（各有 activeLoop、各有门禁、归档各自一个子目录）。
   多流时逐流报结论——一条流读不出来，其余各流的结论照给。
@@ -74,6 +77,11 @@ capabilities：只读检查当前安装是否包含指定协议所需的 CLI、S
   --host          当前宿主落点：claude / agents / openclaw / hermes / pi
   --json          输出可供工具读取的能力报告
 
+solo check：在结果报告、最终人工审批或关闭前，核对每个参与仓已提交的只读追溯包。
+  --manifest      主仓 repositories.json 的仓库内路径
+  --participant   本次运行的参与仓绑定，可重复：<repositoryId>=<本机路径>；路径不写入文档
+  --write-receipt 全部通过后在 manifest 声明的位置写机器收口凭据
+
 退出码：
   0  干净 / 查询成功
   1  声明与事实矛盾（check）
@@ -82,7 +90,7 @@ capabilities：只读检查当前安装是否包含指定协议所需的 CLI、S
 
 // 布尔标志：不吃后面那个 token。少一个登记，`--show <子命令>` 就会把子命令
 // 当成 --show 的值吞掉，而且不报错——所以新加无值标志必须同时加进这里。
-const BOOLEAN_FLAGS = new Set(["json", "help", "global", "show", "claude", "agents", "openclaw", "hermes", "pi"]);
+const BOOLEAN_FLAGS = new Set(["json", "help", "global", "show", "claude", "agents", "openclaw", "hermes", "pi", "write-receipt"]);
 const SHORT_FLAGS = { "-h": "help", "-g": "global" };
 
 function parseArgs(argv) {
@@ -91,7 +99,12 @@ function parseArgs(argv) {
     const token = argv[i];
     if (SHORT_FLAGS[token]) args[SHORT_FLAGS[token]] = true;
     else if (token.startsWith("--") && BOOLEAN_FLAGS.has(token.slice(2))) args[token.slice(2)] = true;
-    else if (token.startsWith("--")) args[token.slice(2)] = argv[++i];
+    else if (token.startsWith("--")) {
+      const key = token.slice(2);
+      const value = argv[++i];
+      if (key === "participant") args[key] = args[key] === undefined ? value : [...(Array.isArray(args[key]) ? args[key] : [args[key]]), value];
+      else args[key] = value;
+    }
     else args._.push(token);
   }
   return args;
@@ -202,6 +215,21 @@ function renderRepoText(repo) {
   return lines.join("\n");
 }
 
+function renderDemandText(repo) {
+  const lines = [`仓库 ${repo.repoRoot}`];
+  const names = repo.demands.map((entry) => entry.name).join(" / ");
+  const selectedBy = repo.requestedDemand ? "--demand" : `当前分支 ${repo.currentBranch || "(未知)"}`;
+  lines.push(`需求单元：${names}（${selectedBy}）`, "");
+  for (const { name, report } of repo.demands) {
+    lines.push(`── 需求 ${name} ──`, `状态文件 ${report.statusPath}`, "", renderReportBody(report), "");
+  }
+  const unreadable = repo.unreadableDemands ?? [];
+  if (unreadable.length) lines.push(`总结论：${unreadable.join(" / ")} 的判据读不出来。`);
+  else if (repo.problemCount) lines.push(`总结论：共 ${repo.problemCount} 处声明与事实不符。`);
+  else lines.push("总结论：需求单元干净。");
+  return lines.join("\n");
+}
+
 // ---------------------------------------------------------------- guide
 
 const FORM_LABEL = { "two-part": "两段式", "three-part": "三段式", "wildcard-only": "仅通配引用" };
@@ -287,7 +315,33 @@ function runCheck(args) {
   if (args["status-file"]) overrides.statusFile = args["status-file"];
   if (args["archive-dir"]) overrides.archiveDir = args["archive-dir"];
 
-  const repo = buildRepoCheckReport(repoRoot, overrides, { stream: args.stream });
+  const repo = buildRepoCheckReport(repoRoot, overrides, { stream: args.stream, demand: args.demand });
+
+  if (repo.selectionError) {
+    process.stderr.write(`${repo.selectionError}\n`);
+    process.exit(EXIT_UNUSABLE);
+  }
+  if (repo.invalidDemand) {
+    process.stderr.write(`需求 ID 不合法：${repo.invalidDemand}。只允许字母、数字、点、下划线和连字符，最长 128 字符。\n`);
+    process.exit(EXIT_UNUSABLE);
+  }
+  if (repo.invalidDemandDirectories) {
+    process.stderr.write(`发现不合法的需求目录：${repo.invalidDemandDirectories.join(" / ")}。请先修正，不能静默忽略门禁单元。\n`);
+    process.exit(EXIT_UNUSABLE);
+  }
+  if (repo.unknownDemand) {
+    const available = repo.availableDemands.length ? repo.availableDemands.join(" / ") : "(无)";
+    process.stderr.write(`没有名为 ${repo.unknownDemand} 的需求单元。可用需求：${available}\n`);
+    process.exit(EXIT_UNUSABLE);
+  }
+  if (repo.ambiguousDemands) {
+    process.stderr.write(`当前分支 ${repo.currentBranch} 同时匹配多个需求：${repo.ambiguousDemands.join(" / ")}。请用 --demand 明确选择。\n`);
+    process.exit(EXIT_UNUSABLE);
+  }
+  if (repo.demandSelectionRequired) {
+    process.stderr.write(`当前分支未唯一匹配需求单元。请用 --demand 指明：${repo.availableDemands.join(" / ")}\n`);
+    process.exit(EXIT_UNUSABLE);
+  }
 
   if (repo.unknownStream) {
     const available = repo.availableStreams.length
@@ -305,6 +359,13 @@ function runCheck(args) {
     else process.stdout.write(`${renderText(report)}\n`);
     if (!report.readable || report.severity === "unusable") process.exit(EXIT_UNUSABLE);
     process.exit(report.ok ? EXIT_OK : EXIT_CONTENT);
+  }
+
+  if (repo.mode === "demands") {
+    if (args.json) process.stdout.write(`${JSON.stringify(repo, null, 2)}\n`);
+    else process.stdout.write(`${renderDemandText(repo)}\n`);
+    if (repo.severity === "unusable") process.exit(EXIT_UNUSABLE);
+    process.exit(repo.ok ? EXIT_OK : EXIT_CONTENT);
   }
 
   if (args.json) process.stdout.write(`${JSON.stringify(repo, null, 2)}\n`);
@@ -336,6 +397,13 @@ function main() {
       stderr: (s) => process.stderr.write(s),
       exit: (code) => process.exit(code),
     }, { packageRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") });
+  }
+  if (command === "solo") {
+    return runSolo(args, {
+      stdout: (s) => process.stdout.write(s),
+      stderr: (s) => process.stderr.write(s),
+      exit: (code) => process.exit(code),
+    });
   }
   if (command === "init") {
     return runInit(args, {

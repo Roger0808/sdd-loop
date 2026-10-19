@@ -4,14 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CLI（对宿主零依赖），pi 扩展只是把它们包成工具与命令——pi 与 Claude Code 都能用。四件仪器：
+sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CLI（对宿主零依赖），pi 扩展只是把它们包成工具与命令——pi 与 Claude Code 都能用。五件仪器：
 
 1. **状态对账**：把状态文件的「声明」与文件里的「事实」摆在一起比（front-matter 可读性 / 悬空指针 / 归档完整性 / 当前门禁 / 下一步）。
 2. **口径字典**：写之前给要求（「这一类条款该写哪几项」+ 本仓现有编号族 + 参考写法）。**只在写之前给要求，不做事后判定。**
 3. **治理事件**：项目显式选择 v1 时继续由 `_governance record` 追加旧分片审计与固定审批门禁；新工作选择 v2 时由 `workflow` 锁定流程、追加轻量过程审计，并在稳定候选后绑定精确源码清单进行正式 Review 与动态签署。两者都不替人作语义审批。
 4. **全维测试证据**：通过内部 `_full_test` 校验项目自带的测试插件清单与证据包协议。它只验证机器事实与完整性，不替 reviewer 或人类作 Verification 判定；要证明包未被整体重写，必须用包外保存的 manifest SHA-256 锚定。
+5. **Solo 多仓收口证据**：`solo check` 从参与仓登记的 commit 读取只读追溯包，校验参与仓身份、基线、文件集合、逐文件 hash、聚合证据和收口凭据。仓库路径只作为本次运行参数传入，不持久化跨仓注册表；它不判断 Implementation、Verification 或 Review 的语义质量。
 
-外加八份工作流 skill：
+外加九份工作流 skill：
 
 - `skills/sdd-init/`：把一个仓库初始化成按 SDD Loop 运行（AGENTS.md 门禁规则 + CLAUDE.md 转引 + status.md），每个仓库一次。**AGENTS.md 是承重墙**——`loop-check.js` 执行的就是它写的那条「矛盾时停下请人确认」，没有它 check 是在判一个仓库从没声明过的约定。所以模板逐字复制，不许现写。
 - `skills/sdd-interview/`：七站提问 + 收官拆任务（冷启动仪器，每个产品一次）。**「七」是提问站数**；拆任务勘察为主、不算提问站，编进站数会让人以为还有一轮问题要答。
@@ -21,8 +22,9 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 - `skills/sdd-debug/`：人工测试驱动的连续排查、修复与测试环境部署；“开始收口”后反写 Debug 路由 Hotfix、按最终代码更新长期架构并显式豁免独立 Review。
 - `skills/sdd-full-test/`：调度项目自带的测试插件，执行 preflight / run / teardown，收集可锚定证据包；不自动修改 Verification 门禁。
 - `skills/sdd-route/`：推荐 Loop、Hotfix、Debug，等待用户确认后固定独立 workflow.md；v2 人工测试轻记录、稳定候选审查及差量签署。
+- `skills/sdd-solo/`：一名开发者在一场主仓对话中交付一个多仓需求；主仓维护权威需求，各参与仓保存已提交、可机器校验的只读追溯包。
 
-四者的分界：init 建约定不产业务内容，interview 产前四份内容，upgrade 只改已有约定，review 在实施后收口但不替人工确认。
+核心分界：init 建约定不产业务内容，interview 产前四份内容，upgrade 只改已有约定，route 选择并锁定 v2 流程，review 在实施后收口但不替人工确认，solo 只负责单人单会话的跨仓编排与证据聚合。
 
 ## 协作形态三档（模板里的条款分档）
 
@@ -70,6 +72,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | `node scripts/sdd-loop.mjs provenance check --base <提交> --head <提交>` | 只读提交区间溯源，识别已覆盖、漂移、未归属与归属不明。 |
 | `node scripts/sdd-loop.mjs capabilities --require debug@1 --host <宿主>` | Debug 回溯收口能力预检；验证治理依赖、Hotfix 判据与宿主 `sdd-debug` Skill。 |
 | `node scripts/sdd-loop.mjs capabilities --require full-test@1 --host <宿主>` | Full-Test 协议与宿主 Skill 能力预检。 |
+| `node scripts/sdd-loop.mjs solo check --repo <主仓> --manifest <清单> --participant <仓库ID=路径> ... --write-receipt` | 从已提交版本校验 Solo 参与仓追溯包并生成主仓收口凭据；路径绑定只在本次进程中生效。 |
 | `node scripts/sdd-loop.mjs _governance record --event-json <tmp> [--repo <dir>]` | Skills 内部事件入口；不作为用户工作流命令宣传。 |
 | `node scripts/sdd-loop.mjs _full_test verify-manifest --file <path>` | Skills 内部插件清单校验入口；证据包用 `verify-bundle --dir <dir> [--manifest-sha256 <包外锚点>]`。 |
 | `node scripts/sdd-loop.mjs init -g [--show]` | 把本包装进本机落点（`~/.claude/skills` / `~/.agents/skills` / OpenClaw state skills / Hermes `external_dirs` / pi）。**改代码后别拿真 home 试**，用 `HOME=<临时目录>` 跑；profile 测试同时控制对应环境变量与 PATH。 |
@@ -85,9 +88,10 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | 判定 | `src/validation/loop-check.js` | 状态对账**唯一判定源**：只返回数据，不渲染文案；判据读不出来时拒绝给任何结论。`buildLoopCheckReport()` 判一条流，`buildRepoCheckReport()` 是**聚合层，自己不判**——只发现、逐流委派、做算术（严重度取最坏：unusable > problem > ok）；打错的流名当**参数错**返回 `unknownStream`，不走下去说成冷启动 |
 | 治理 v1 | `src/governance/protocol.js` + `src/validation/governance-check.js` | 旧事件格式、身份/角色、脱敏、分片哈希链、代码/文档指纹和 C6-C10；旧工作不自动迁移。 |
 | 治理 v2 | `src/workflow/` + `src/validation/workflow-check.js` + `workflows/*/workflow.md` | 独立流程定义、项目/流覆盖、启动锁、轻量手测审计、稳定候选源码清单、动态审查与签署、提交区间溯源。 |
+| Solo 收口 | `src/solo/validation.js` | S1-S5 唯一机器判定源：参与清单、运行时仓库绑定、readiness receipt、已提交追溯包与主仓收口凭据；只判可验证事实。 |
 | 安装计划 | `src/install/plan.js` | `init -g` 的**唯一判定源**：只算不写。OpenClaw 默认 state 复用 `~/.agents/skills`，自定义 `OPENCLAW_STATE_DIR` 写入该 state 的 `skills/`；Hermes 解析 config 并只追加 `skills.external_dirs`。 |
-| CLI | `scripts/sdd-loop.mjs` + `scripts/lib/` | `check` / `guide` / `capabilities` / `init` / `workflow` / `provenance` 六个用户子命令和 Skills 内部 `_governance` / `_hotfix` / `_full_test` 入口；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。 |
-| pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd` 任务描述动态推荐及 init、upgrade、review、hotfix、debug、full-test 工作流路由；未知子命令只返回用法。 |
+| CLI | `scripts/sdd-loop.mjs` + `scripts/lib/` | `check` / `guide` / `capabilities` / `init` / `workflow` / `provenance` / `solo check` 七个用户子命令和 Skills 内部 `_governance` / `_hotfix` / `_full_test` 入口；文案与退出码（0/1/2，契约在 `scripts/lib/exit-codes.mjs`）。 |
+| pi 扩展 | `extensions/sdd-loop/index.ts` | `sdd_loop_check` / `sdd_spec_guide` 两个工具 + `/sdd` 任务描述动态推荐及 init、upgrade、review、hotfix、debug、full-test、solo 工作流路由；未知子命令只返回用法。 |
 | Skill · init | `skills/sdd-init/` | SKILL.md + AGENTS/CLAUDE/Baseline 模板 + `AGENTS.md.CHANGELOG.md` 与 `AGENTS.md.AUDIT.md`。模板不用会被宿主自动读走的真名。 |
 | Skill · 访谈 | `skills/sdd-interview/SKILL.md` | 访谈大纲 + 落点约定 + 勘察分工（SDD 文档 = 抽取 + 勘察 + 现场沟通；抽不出来要明说，不许编）。Requirements 每轮开局可选标准或内建的深挖问答，深挖不依赖外部 skill、可随时退出且不改变审批门禁。第 0 站**先定流、再捞 backlog**——顺序反了就筛不出该摆哪几条 |
 | Skill · 升级 | `skills/sdd-upgrade/SKILL.md` | 老仓库的条款对齐、形态迁移、已关闭 v1 流的后续 v2 切换和逐项授权的 AGENTS Candidate 审计。 |
@@ -95,6 +99,7 @@ sdd-loop 是一个给 SDD Loop 约定提供仪器的包。主体是 skill 与 CL
 | Skill · Hotfix | `skills/sdd-hotfix/SKILL.md` | 独立文档、隔离分支、验证、独立只读审查与人工签署。 |
 | Skill · Debug | `skills/sdd-debug/SKILL.md` | 调试期不建文档或 Review；收口时回溯 Hotfix、架构反写、人工测试验收与显式 Review 豁免。 |
 | Skill · Full-Test | `skills/sdd-full-test/SKILL.md` | 测试插件生命周期、五态结果、严格 plan/result 绑定与包外摘要锚定；只产证据，不替 reviewer 判定。 |
+| Skill · Solo | `skills/sdd-solo/SKILL.md` | 单人单会话多仓需求；风险分流、参与仓追溯导出、按 commit 机器校验和聚合关闭。 |
 | 首页 | `README.md`（英文，默认）+ `README_zh.md`（简体中文） | **改一份必须改另一份**。`tests/readme.test.js` 对两份跑同一批锁，数字与名字（站数 / 条款类型 / 宿主 / 子命令）一律从真相源推导，只有「用什么写法表达这个数」按语言分 |
 
 ## 红线（复审时盯这些）

@@ -13,6 +13,43 @@ import { execFileSync } from "node:child_process";
 import { readFrontMatter, isBlank } from "./front-matter.js";
 import { resolveConvention } from "./convention.js";
 
+export const DEMAND_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+export function validDemandId(value) {
+  const id = String(value ?? "");
+  return DEMAND_ID_PATTERN.test(id) && id !== "." && id !== "..";
+}
+
+/** 发现 docs/loops/demands/<demandId>/status.md；无效目录名不会被静默接纳。 */
+export function discoverDemands(repoRoot, overrides = {}) {
+  const convention = resolveConvention(overrides);
+  const root = path.resolve(repoRoot);
+  const demandsRoot = path.join(root, path.dirname(convention.statusFile), "demands");
+  const statusName = path.basename(convention.statusFile);
+  const demands = [];
+  const invalidDemands = [];
+  if (fs.existsSync(demandsRoot)) {
+    for (const entry of fs.readdirSync(demandsRoot)) {
+      if (!fs.existsSync(path.join(demandsRoot, entry, statusName))) continue;
+      (validDemandId(entry) ? demands : invalidDemands).push(entry);
+    }
+  }
+  demands.sort();
+  invalidDemands.sort();
+  return { demands, invalidDemands };
+}
+
+export function currentGitBranch(repoRoot) {
+  return git(path.resolve(repoRoot), ["branch", "--show-current"]);
+}
+
+export function readStatusMeta(repoRoot, statusFile) {
+  const content = readTextFile(path.join(path.resolve(repoRoot), statusFile));
+  if (content === null) return null;
+  const parsed = readFrontMatter(content);
+  return parsed.ok ? parsed.meta : null;
+}
+
 /**
  * 分流发现：这个仓库是单流还是分流。只产出事实，不下结论。
  *

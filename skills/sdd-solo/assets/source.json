@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "protocol": "sdd-solo@1",
+  "demandId": "<demand-id>",
+  "deliveryMode": "<full|openspec-light>",
+  "repository": {
+    "repositoryId": "<repository-id>",
+    "remote": "<participant-remote>"
+  },
+  "authority": {
+    "remote": "<primary-remote>",
+    "requirementsPath": "<relative-path>",
+    "commit": "<commit>",
+    "requirementsSha256": "sha256:<digest>"
+  },
+  "changeId": null,
+  "exportedAt": "<RFC3339>",
+  "files": {}
+}

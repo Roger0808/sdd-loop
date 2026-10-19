@@ -17,6 +17,7 @@
  *   /sdd hotfix 与 /sdd-hotfix 加载 sdd-hotfix skill（独立单文档修复通道）
  *   /sdd debug 与 /sdd-debug 加载 sdd-debug skill（人工测试驱动的连续调试通道）
  *   /sdd full-test 与 /sdd-full-test 加载 sdd-full-test skill（全维度测试调度与证据采集）
+ *   /sdd solo 与 /sdd-solo 加载 sdd-solo skill（单人、单会话、多仓需求编排）
  */
 
 import { Type } from "@earendil-works/pi-ai";
@@ -106,6 +107,12 @@ function renderCheckBody(report: any): string {
  * 两个表面各判各的，正是这个包最不想要的东西。
  */
 function renderRepoCheck(repo: any): string {
+	if (repo.selectionError) return repo.selectionError;
+	if (repo.invalidDemand) return `需求 ID 不合法：${repo.invalidDemand}。只允许字母、数字、点、下划线和连字符，最长 128 字符。`;
+	if (repo.invalidDemandDirectories) return `发现不合法的需求目录：${repo.invalidDemandDirectories.join(" / ")}。请先修正，不能静默忽略门禁单元。`;
+	if (repo.unknownDemand) return `没有名为 ${repo.unknownDemand} 的需求单元。可用需求：${repo.availableDemands.join(" / ") || "(无)"}`;
+	if (repo.ambiguousDemands) return `当前分支 ${repo.currentBranch} 同时匹配多个需求：${repo.ambiguousDemands.join(" / ")}。请用 demand 参数明确选择。`;
+	if (repo.demandSelectionRequired) return `当前分支未唯一匹配需求单元。请用 demand 参数指明：${repo.availableDemands.join(" / ")}`;
 	if (repo.unknownStream) {
 		const available = repo.availableStreams.length
 			? `本仓库的流：${repo.availableStreams.join(" / ")}`
@@ -114,6 +121,14 @@ function renderRepoCheck(repo: any): string {
 	}
 	// 单流原路返回：输出与分流引入之前逐字相同。
 	if (repo.mode === "single") return renderCheckBody(repo.streams[0].report);
+	if (repo.mode === "demands") {
+		const names = repo.demands.map((entry: any) => entry.name).join(" / ");
+		const selectedBy = repo.requestedDemand ? "demand 参数" : `当前分支 ${repo.currentBranch || "(未知)"}`;
+		const lines = [`需求单元：${names}（${selectedBy}）`];
+		for (const { name, report } of repo.demands) lines.push("", `## 需求 ${name}（${report.statusPath}）`, "", renderCheckBody(report));
+		lines.push("", repo.problemCount ? `总结论：共 ${repo.problemCount} 处声明与事实不符。` : "总结论：需求单元干净。");
+		return lines.join("\n");
+	}
 
 	// 指名了 stream 时抬头说清「只判了这一条」：写「分流：1 条」是句假话，
 	// 仓库里可能有七条，而抬头正是读者用来判断有没有漏看的那一行。
@@ -182,6 +197,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: "仓库根，默认当前工作目录" })),
 			stream: Type.Optional(Type.String({ description: "分流仓库里只判这一条流；不传则逐流都判" })),
+			demand: Type.Optional(Type.String({ description: "只判这一需求单元；不传时可按当前 Git 分支唯一匹配" })),
 			statusFile: Type.Optional(Type.String({ description: "状态文件相对仓库根的路径，默认 docs/loops/status.md" })),
 			archiveDir: Type.Optional(Type.String({ description: "归档根目录，默认 docs/archive" })),
 		}),
@@ -190,7 +206,7 @@ export default function (pi: ExtensionAPI) {
 			const overrides: Record<string, string> = {};
 			if (params.statusFile) overrides.statusFile = params.statusFile;
 			if (params.archiveDir) overrides.archiveDir = params.archiveDir;
-			const report = buildRepoCheckReport(repo, overrides, { stream: params.stream });
+			const report = buildRepoCheckReport(repo, overrides, { stream: params.stream, demand: params.demand });
 			return {
 				content: [{ type: "text", text: truncate(renderRepoCheck(report)) }],
 				// 单流时 details.report 仍是那份单流报告本身，形状与分流引入之前相同；
@@ -275,7 +291,13 @@ export default function (pi: ExtensionAPI) {
 		"做 preflight 探活并在 finally 路径执行 teardown 平账清理，最后生成带 manifest.sha256 的 Evidence Bundle，并把清单摘要记录到包外作为复核锚点，" +
 		"并整理 verification.md 的待审补丁与 extensionClaims。不要替我下通过结论，也不要自动确认门禁。";
 
-	const SDD_USAGE = "用法：/sdd [任务描述|init|upgrade|review|hotfix|debug|full-test]；任务描述先推荐流程并请用户确认。";
+	const SOLO_MESSAGE =
+		"请加载 sdd-solo skill。当前仓库是主仓，所有对话和命令都留在本会话；先询问一次可扫描的工作区根目录，" +
+		"从代码、依赖、接口和远程关系发现候选仓库，固定各仓远程 master 的 commit，再让我确认参与仓。" +
+		"主仓维护唯一权威需求和按仓实施单元；由你从主会话操作各参与仓、逐仓验证与审查、做跨仓聚合审查，" +
+		"最终人工批准后，把只读追溯包导出到各参与仓。不要在参与仓启动独立 SDD Loop。";
+
+	const SDD_USAGE = "用法：/sdd [任务描述|init|upgrade|review|hotfix|debug|full-test|solo]；任务描述先推荐流程并请用户确认。";
 
 	pi.registerCommand("sdd", {
 		description: "SDD Loop：访谈，或用 init / upgrade / review 进入初始化、升级和审查",
@@ -291,7 +313,7 @@ export default function (pi: ExtensionAPI) {
 					: FULL_TEST_MESSAGE;
 				return pi.sendUserMessage(msg);
 			}
-			if (parts.length !== 1 || !["init", "upgrade", "review", "hotfix", "debug"].includes(sub)) {
+			if (parts.length !== 1 || !["init", "upgrade", "review", "hotfix", "debug", "solo"].includes(sub)) {
 				if (parts.length === 1 && /^[a-z][a-z0-9-]*$/i.test(raw)) return pi.sendUserMessage(SDD_USAGE);
 				const recommendation = recommendWorkflow(raw);
 				return pi.sendUserMessage(`根据任务描述推荐 ${recommendation.route}：${recommendation.reason} 请先向我展示选择理由并取得确认，再加载相应 Skill，按已固定的 workflow.md 启动；确认前不要写入工作流状态。原始任务：${raw}`);
@@ -302,8 +324,17 @@ export default function (pi: ExtensionAPI) {
 				review: REVIEW_MESSAGE,
 				hotfix: HOTFIX_MESSAGE,
 				debug: DEBUG_MESSAGE,
+				solo: SOLO_MESSAGE,
 			};
 			return pi.sendUserMessage(messages[sub] ?? SDD_USAGE);
+		},
+	});
+
+	pi.registerCommand("sdd-solo", {
+		description: "SDD Solo：一个开发者在一个主会话中完成多仓需求",
+		handler: async (args: any, _ctx: any) => {
+			if (String(args ?? "").trim()) return pi.sendUserMessage("用法：/sdd-solo（不带参数）。");
+			return pi.sendUserMessage(SOLO_MESSAGE);
 		},
 	});
 

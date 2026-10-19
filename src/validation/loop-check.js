@@ -14,11 +14,12 @@
  *   advisory(0) 只报事实，不影响结论（C5 就是这一档，理由见下）
  */
 
+import fs from "node:fs";
 import path from "node:path";
 
-import { scanLoopRepo, discoverStreams } from "../loop/repo-scan.js";
+import { scanLoopRepo, discoverStreams, discoverDemands, currentGitBranch, readStatusMeta, validDemandId } from "../loop/repo-scan.js";
 import { isBlank } from "../loop/front-matter.js";
-import { conventionForStream } from "../loop/convention.js";
+import { conventionForStream, conventionForDemand, resolveConvention } from "../loop/convention.js";
 import { buildGovernanceChecks } from "./governance-check.js";
 import { buildHotfixChecks } from "./hotfix-check.js";
 import { buildWorkflowChecks } from "./workflow-check.js";
@@ -75,7 +76,7 @@ export function buildLoopCheckReport(repoRoot, overrides = {}, options = {}) {
 
   // 判据读不出来时，后面的判定全部不做——建立在猜出来的元数据上的结论比没有结论更坏。
   if (!c1.ok) {
-    return {
+    const unreadableReport = {
       repoRoot: scan.repoRoot,
       statusPath: status.path,
       readable: false,
@@ -90,6 +91,27 @@ export function buildLoopCheckReport(repoRoot, overrides = {}, options = {}) {
       advisories: [],
       nextStep: null,
     };
+    if (options.demandId) unreadableReport.demandId = options.demandId;
+    return unreadableReport;
+  }
+
+  // ---------- D1 需求单元身份 ----------
+  const demandChecks = [];
+  if (options.demandId) {
+    const d1 = check("D1", "需求单元身份与分支绑定可信", SEVERITY.problem);
+    if (String(status.meta.demandId ?? "") !== options.demandId) {
+      fail(d1, `目录需求标识为 ${options.demandId}，状态文件 demandId 为 ${status.meta.demandId || "(空)"}。`, { file: status.path });
+    }
+    const declaredBranch = String(status.meta.branch ?? "").replace(/^refs\/heads\//, "");
+    const currentBranch = String(options.currentBranch ?? "").replace(/^refs\/heads\//, "");
+    if (currentBranch && declaredBranch !== currentBranch) {
+      d1.findings.push({
+        detail: `当前分支 ${currentBranch} 与需求绑定分支 ${declaredBranch} 不同；显式 --demand 仍可只读检查，但实施前应确认工作树。`,
+        kind: "branch-mismatch",
+        advisory: true,
+      });
+    }
+    demandChecks.push(d1);
   }
 
   // ---------- C2 活跃 Loop 的声明与目录事实 ----------
@@ -181,26 +203,29 @@ export function buildLoopCheckReport(repoRoot, overrides = {}, options = {}) {
   const hotfix = String(status.meta.governanceVersion) === "2"
     ? { checks: [], files: [], unusable: false } : buildHotfixChecks(scan);
   const checks = [c1, c2, c3, c4, c5, ...governanceChecks, ...hotfix.checks];
+  const demandProblems = demandChecks.flatMap((entry) => entry.findings.filter((finding) => !finding.advisory));
   const problems = [
     ...c2.findings,
     ...c3.findings,
+    ...demandProblems,
     ...governanceChecks.flatMap((entry) => entry.findings),
     ...hotfix.checks.flatMap((entry) => entry.findings),
   ];
-  const advisories = [...c5.findings];
+  const advisories = [...c5.findings, ...demandChecks.flatMap((entry) => entry.findings.filter((finding) => finding.advisory))];
   const report = {
     repoRoot: scan.repoRoot,
     statusPath: status.path,
     readable: true,
     ok: problems.length === 0,
     severity: hotfix.unusable ? SEVERITY.unusable : problems.length ? SEVERITY.problem : null,
-    checks,
+    checks: [...checks, ...demandChecks],
     problems,
     advisories,
     nextStep,
   };
   // 没有 Hotfix 时不增加空字段，保证旧 CLI JSON/details 的字节级形状不变。
   if (hotfix.checks.length) report.hotfixes = hotfix.files.map(({ body, ...file }) => file);
+  if (options.demandId) report.demandId = options.demandId;
   return report;
 }
 
@@ -208,7 +233,7 @@ export function buildLoopCheckReport(repoRoot, overrides = {}, options = {}) {
  * 把各条流已经下好的结论收拢成一个。**这里不下任何新结论**——
  * 只做两件算术：谁可读、问题共几处。判定散进聚合层，就是「CLI 和工具各判各的」的下一站。
  */
-function aggregate(mode, entries) {
+function aggregate(mode, entries, collection = "streams") {
   // 一条流读不出来**不能吃掉另一条流的结论**：readable 问的是「有没有流给出了结论」，
   // 不是「是不是所有流都可读」。顺手写成后者，会让一条流的合并冲突瘫痪整个仓库的门禁。
   const readable = entries.filter((e) => e.report.readable);
@@ -216,17 +241,18 @@ function aggregate(mode, entries) {
   const problemCount = entries
     .filter((e) => e.report.readable)
     .reduce((n, e) => n + e.report.problems.length, 0);
-  return {
+  const result = {
     repoRoot: entries[0].report.repoRoot,
     mode,
-    streams: entries,
+    [collection]: entries,
     readable: readable.length > 0,
-    unreadableStreams: unreadable.map((e) => e.name),
+    [collection === "demands" ? "unreadableDemands" : "unreadableStreams"]: unreadable.map((e) => e.name),
     ok: unreadable.length === 0 && problemCount === 0,
     // 取各流中最坏的一档：unusable(2) > problem(1) > ok(0)。
     severity: unreadable.length ? SEVERITY.unusable : problemCount ? SEVERITY.problem : null,
     problemCount,
   };
+  return result;
 }
 
 /**
@@ -238,10 +264,70 @@ function aggregate(mode, entries) {
  *
  * @param {string} repoRoot 仓库根
  * @param {object} overrides 约定覆盖（见 src/loop/convention.js）
- * @param {{stream?: string}} options 指名只判一条流
+ * @param {{stream?: string, demand?: string}} options 指名只判一条流或需求单元
  */
 export function buildRepoCheckReport(repoRoot, overrides = {}, options = {}) {
+  const requestedDemand = options.demand;
   const requested = options.stream;
+  const demandDiscovery = discoverDemands(repoRoot, overrides);
+  const branch = currentGitBranch(repoRoot);
+
+  if (requested && requestedDemand) {
+    return {
+      repoRoot: path.resolve(repoRoot), mode: "invalid-selection", streams: [], readable: false,
+      selectionError: "--stream 与 --demand 不能同时使用。", ok: false, severity: SEVERITY.unusable, problemCount: 0,
+    };
+  }
+  if (requestedDemand && !validDemandId(requestedDemand)) {
+    return {
+      repoRoot: path.resolve(repoRoot), mode: "demands", demands: [], readable: false,
+      invalidDemand: requestedDemand, availableDemands: demandDiscovery.demands, ok: false, severity: SEVERITY.unusable, problemCount: 0,
+    };
+  }
+  if (demandDiscovery.invalidDemands.length) {
+    return {
+      repoRoot: path.resolve(repoRoot), mode: "demands", demands: [], readable: false,
+      invalidDemandDirectories: demandDiscovery.invalidDemands, availableDemands: demandDiscovery.demands,
+      ok: false, severity: SEVERITY.unusable, problemCount: 0,
+    };
+  }
+
+  let selectedDemand = requestedDemand || null;
+  // 显式 --stream 是对旧分流模型的明确选择，不能再被当前分支恰好匹配的
+  // demand unit 抢走。只有没有任何显式选择时才做需求单元自动识别。
+  if (!requested && !selectedDemand && demandDiscovery.demands.length && branch) {
+    const matches = demandDiscovery.demands.filter((name) => {
+      const meta = readStatusMeta(repoRoot, conventionForDemand(name, overrides).statusFile);
+      return String(meta?.branch ?? "").replace(/^refs\/heads\//, "") === branch.replace(/^refs\/heads\//, "");
+    });
+    if (matches.length === 1) [selectedDemand] = matches;
+    if (matches.length > 1) {
+      return {
+        repoRoot: path.resolve(repoRoot), mode: "demands", demands: [], readable: false,
+        ambiguousDemands: matches, currentBranch: branch, availableDemands: demandDiscovery.demands,
+        ok: false, severity: SEVERITY.unusable, problemCount: 0,
+      };
+    }
+  }
+  if (selectedDemand) {
+    if (!demandDiscovery.demands.includes(selectedDemand)) {
+      return {
+        repoRoot: path.resolve(repoRoot), mode: "demands", demands: [], readable: false,
+        unknownDemand: selectedDemand, availableDemands: demandDiscovery.demands,
+        ok: false, severity: SEVERITY.unusable, problemCount: 0,
+      };
+    }
+    return {
+      ...aggregate("demands", [{
+        name: selectedDemand,
+        report: buildLoopCheckReport(repoRoot, conventionForDemand(selectedDemand, overrides), { demandId: selectedDemand, currentBranch: branch }),
+      }], "demands"),
+      requestedDemand: requestedDemand || null,
+      autoSelectedDemand: requestedDemand ? null : selectedDemand,
+      currentBranch: branch,
+    };
+  }
+
   const found = discoverStreams(repoRoot, overrides);
 
   if (requested) {
@@ -272,6 +358,13 @@ export function buildRepoCheckReport(repoRoot, overrides = {}, options = {}) {
   }
 
   if (found.mode === "single") {
+    if (demandDiscovery.demands.length && !found.streams.length && !requested && !fsLegacyStatusExists(repoRoot, overrides)) {
+      return {
+        repoRoot: path.resolve(repoRoot), mode: "demands", demands: [], readable: false,
+        demandSelectionRequired: true, currentBranch: branch, availableDemands: demandDiscovery.demands,
+        ok: false, severity: SEVERITY.unusable, problemCount: 0,
+      };
+    }
     return aggregate("single", [{ name: null, report: buildLoopCheckReport(repoRoot, overrides) }]);
   }
   return aggregate(
@@ -281,6 +374,10 @@ export function buildRepoCheckReport(repoRoot, overrides = {}, options = {}) {
       report: buildLoopCheckReport(repoRoot, conventionForStream(name, overrides), { stream: name }),
     })),
   );
+}
+
+function fsLegacyStatusExists(repoRoot, overrides) {
+  return fs.existsSync(path.join(path.resolve(repoRoot), resolveConvention(overrides).statusFile));
 }
 
 export { SEVERITY };

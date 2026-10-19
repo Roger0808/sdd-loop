@@ -16,8 +16,8 @@ import { execFileSync } from "node:child_process";
 
 import { buildLoopCheckReport, buildRepoCheckReport } from "../src/validation/loop-check.js";
 import { readFrontMatter } from "../src/loop/front-matter.js";
-import { discoverStreams } from "../src/loop/repo-scan.js";
-import { conventionForStream } from "../src/loop/convention.js";
+import { discoverStreams, discoverDemands } from "../src/loop/repo-scan.js";
+import { conventionForStream, conventionForDemand } from "../src/loop/convention.js";
 
 function git(dir, args) {
   execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
@@ -52,6 +52,25 @@ function makeRepo(build) {
   }
   if (build) build(root);
   git(root, ["init", "-q"]);
+  git(root, ["add", "-A"]);
+  git(root, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"]);
+  return root;
+}
+
+function demandStatus(demandId, branch, options = {}) {
+  return statusFile(options).replace("document: loop-status\n", `document: loop-status\ndemandId: ${demandId}\nbranch: ${branch}\n`);
+}
+
+function makeDemandRepo(demands, currentBranch = "feature/current") {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdd-demand-"));
+  for (const [demandId, branch] of Object.entries(demands)) {
+    write(root, `docs/loops/demands/${demandId}/status.md`, demandStatus(demandId, branch));
+    for (const stageName of ["requirements", "architecture", "specification", "tasks", "implementation"]) {
+      write(root, `docs/archive/demands/${demandId}/loop-0-cleanup/${stageName}.md`, doc("archived"));
+    }
+  }
+  git(root, ["init", "-q"]);
+  git(root, ["checkout", "-qb", currentBranch]);
   git(root, ["add", "-A"]);
   git(root, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"]);
   return root;
@@ -202,6 +221,86 @@ test("C3：状态不在白名单里时要额外说出来", () => {
   });
   const report = buildLoopCheckReport(root);
   assert.ok(report.problems.some((p) => p.detail.includes("不在允许的状态里")));
+});
+
+// ---------------------------------------------------------------- demand unit
+
+test("demand：按当前分支唯一自动选择需求单元", () => {
+  const root = makeDemandRepo({ "REQ-101": "feature/current", "REQ-102": "feature/other" });
+  const discovered = discoverDemands(root);
+  assert.deepEqual(discovered, { demands: ["REQ-101", "REQ-102"], invalidDemands: [] });
+
+  const report = buildRepoCheckReport(root);
+  assert.equal(report.mode, "demands");
+  assert.equal(report.autoSelectedDemand, "REQ-101");
+  assert.deepEqual(report.demands.map((item) => item.name), ["REQ-101"]);
+  assert.equal(report.ok, true, JSON.stringify(report, null, 2));
+});
+
+test("demand：显式选择可跨分支检查，但必须给可见提示", () => {
+  const root = makeDemandRepo({ "REQ-101": "feature/current", "REQ-102": "feature/other" });
+  const report = buildRepoCheckReport(root, {}, { demand: "REQ-102" });
+  assert.equal(report.requestedDemand, "REQ-102");
+  assert.equal(report.ok, true, JSON.stringify(report, null, 2));
+  assert.ok(report.demands[0].report.advisories.some((item) => item.kind === "branch-mismatch"));
+});
+
+test("demand：无法按分支识别且没有旧根状态时，要求显式选择", () => {
+  const root = makeDemandRepo({ "REQ-101": "feature/a", "REQ-102": "feature/b" }, "feature/current");
+  const report = buildRepoCheckReport(root);
+  assert.equal(report.demandSelectionRequired, true);
+  assert.deepEqual(report.availableDemands, ["REQ-101", "REQ-102"]);
+  assert.equal(report.severity, "unusable");
+});
+
+test("demand：旧根状态存在时保持旧单仓报告形状", () => {
+  const root = makeDemandRepo({ "REQ-101": "feature/a" }, "feature/current");
+  write(root, "docs/loops/status.md", statusFile());
+  const report = buildRepoCheckReport(root);
+  assert.equal(report.mode, "single");
+  assert.equal(report.readable, true);
+  assert.equal(report.streams[0].report.statusPath.replaceAll("\\", "/"), "docs/loops/status.md");
+});
+
+test("demand：与 stream 互斥，无效 ID 和目录均 fail closed", () => {
+  const root = makeDemandRepo({ "REQ-101": "feature/current" });
+  assert.equal(buildRepoCheckReport(root, {}, { demand: "REQ-101", stream: "maker" }).mode, "invalid-selection");
+  assert.equal(buildRepoCheckReport(root, {}, { demand: "_bad" }).invalidDemand, "_bad");
+
+  write(root, "docs/loops/demands/_bad/status.md", demandStatus("_bad", "feature/current"));
+  const invalid = buildRepoCheckReport(root);
+  assert.deepEqual(invalid.invalidDemandDirectories, ["_bad"]);
+  assert.equal(invalid.severity, "unusable");
+});
+
+test("demand：显式 stream 不会被当前分支的需求单元自动识别抢占", () => {
+  const root = makeDemandRepo({ "REQ-101": "feature/current" });
+  const report = buildRepoCheckReport(root, {}, { stream: "maker" });
+  assert.equal(report.unknownStream, "maker");
+  assert.equal(report.mode, "single");
+  assert.equal(report.autoSelectedDemand, undefined);
+});
+
+test("demand：目录名、status demandId 与 branch 都进入独立判据", () => {
+  const root = makeDemandRepo({ "REQ-101": "feature/current" });
+  const convention = conventionForDemand("REQ-101");
+  assert.equal(convention.statusFile, path.join("docs", "loops", "demands", "REQ-101", "status.md"));
+  assert.equal(convention.archiveDir, path.join("docs", "archive", "demands", "REQ-101"));
+
+  const statusPath = path.join(root, convention.statusFile);
+  fs.writeFileSync(statusPath, fs.readFileSync(statusPath, "utf8").replace("demandId: REQ-101", "demandId: REQ-999"));
+  const report = buildRepoCheckReport(root, {}, { demand: "REQ-101" });
+  assert.equal(report.ok, false);
+  assert.ok(report.demands[0].report.problems.some((item) => item.detail.includes("REQ-999")));
+
+  fs.writeFileSync(statusPath, fs.readFileSync(statusPath, "utf8").replace("branch: feature/current", ""));
+  const missingBranch = buildRepoCheckReport(root, {}, { demand: "REQ-101" });
+  assert.equal(missingBranch.ok, false);
+  assert.equal(missingBranch.demands[0].report.reason, "unreadable");
+  assert.ok(
+    missingBranch.demands[0].report.problems.some((item) => item.detail.includes("缺必需字段 `branch`")),
+    JSON.stringify(missingBranch.demands[0].report, null, 2),
+  );
 });
 
 // ---------------------------------------------------------------- C4 / C5

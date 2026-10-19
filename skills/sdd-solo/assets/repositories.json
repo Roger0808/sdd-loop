@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "demandId": "<demand-id>",
+  "naming": {
+    "demandTitle": "<demand-title>",
+    "shortTitle": "<short-title>",
+    "conversationTitle": "[SDD Solo][<demand-id>] <demand-title>",
+    "branchDate": "<yyMMdd>",
+    "branchTemplate": "feature/{yyMMdd}_{demandId}_{shortTitle}",
+    "canonicalBranch": "feature/<yyMMdd>_<demand-id>_<short-title>"
+  },
+  "primaryRepository": "<repository-id>",
+  "deliveryMode": null,
+  "modeDecision": {
+    "recommendedMode": null,
+    "confirmedMode": null,
+    "confirmedBy": null,
+    "confirmedAt": null,
+    "reasons": [],
+    "riskAssessment": {
+      "requirementsResolved": false,
+      "scopeAndAcceptanceClear": false,
+      "repositoriesInspected": false,
+      "verificationPlanClear": false,
+      "rollbackPlanClear": false,
+      "architectureDecisionRisk": "unknown",
+      "breakingContractOrCutoverRisk": "unknown",
+      "complexDataMigrationRisk": "unknown",
+      "materialSensitiveDomainRisk": "unknown",
+      "complexReleaseCoordinationRisk": "unknown",
+      "irreversibleOrHighBlastRadiusRisk": "unknown",
+      "explicitFullGovernanceRequired": "unknown"
+    }
+  },
+  "requirementsVersion": { "commit": "<commit>", "sha256": "sha256:<digest>" },
+  "releaseChecklist": {
+    "path": "release-checklist.md",
+    "state": "draft",
+    "sha256": null,
+    "preparedAt": null
+  },
+  "participants": [],
+  "excludedCandidates": [],
+  "unavailableCandidates": [],
+  "closure": {
+    "state": "pending",
+    "aggregateReview": {
+      "outcome": "PENDING",
+      "evidencePath": null,
+      "reviewedAt": null
+    },
+    "receiptPath": "solo-closure-receipt.json"
+  }
+}

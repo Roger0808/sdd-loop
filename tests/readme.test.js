@@ -94,6 +94,7 @@ test("README 提到的阶段文档名都在 convention.stageDocs 里", () => {
   const allowed = new Set([
     ...DEFAULT_CONVENTION.stageDocs,
     "status", "agents", "candidate", "claude", "readme", "overview", "stream", "opt-in", "workflow",
+    "release-checklist",
   ]);
   for (const { file, text } of READMES) {
     for (const [, name] of text.matchAll(/\b([a-z][a-z-]*)\.md\b/g)) {
@@ -143,7 +144,7 @@ test("README 里的 sdd-loop 命令都是真实子命令", () => {
   }
 });
 
-test("README 写清七个工作流命令及对应 Skill", () => {
+test("README 写清八个工作流命令及对应 Skill", () => {
   const routes = [
     ["/sdd init", "sdd-init"],
     ["/sdd", "sdd-interview"],
@@ -152,6 +153,7 @@ test("README 写清七个工作流命令及对应 Skill", () => {
     ["/sdd-hotfix", "sdd-hotfix"],
     ["/sdd-debug", "sdd-debug"],
     ["/sdd-full-test", "sdd-full-test"],
+    ["/sdd solo", "sdd-solo"],
   ];
   for (const { file, text } of READMES) {
     for (const [route, skill] of routes) {
@@ -213,7 +215,7 @@ test("README 承诺的本地文件都存在（安装步骤与链接不许断）"
       assert.ok(fs.existsSync(path.join(REPO_ROOT, clean)), `${file} 链接到 ${clean}，但文件不存在`);
     }
     // 安装步骤软链的每个 skill 目录必须真的在包里。
-    for (const d of ["skills/sdd-init", "skills/sdd-interview", "skills/sdd-upgrade", "skills/sdd-review", "skills/sdd-hotfix", "skills/sdd-debug"]) {
+    for (const d of ["skills/sdd-init", "skills/sdd-interview", "skills/sdd-upgrade", "skills/sdd-review", "skills/sdd-solo", "skills/sdd-hotfix", "skills/sdd-debug", "skills/sdd-full-test"]) {
       assert.ok(
         text.includes(d) && fs.existsSync(path.join(REPO_ROOT, d)),
         `${file} 的安装步骤引用了 ${d}，它必须真实存在`,
@@ -240,6 +242,14 @@ test("双语 README 同步覆盖核心流程和安装路由", () => {
     "/sdd review",
     "/sdd-hotfix",
     "/sdd-debug",
+    "debug@1",
+    "/sdd solo",
+    "sdd-solo",
+    "solo@1",
+    "--demand",
+    "KEEP_SDD_CANONICAL",
+    "NOT_TESTABLE_SAFELY",
+    "OPENCLAW_STATE_DIR",
   ];
   for (const claim of sharedClaims) {
     for (const { file, text } of READMES) assert.ok(text.includes(claim), `${file} 漏了 ${claim}`);

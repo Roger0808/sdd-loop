@@ -16,6 +16,14 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 - `sdd-loop check`：每轮开局读状态。本 skill 不管状态对账。
 - `sdd-loop guide --type <文档>.<条款>`：**写任何条款之前**先查口径和本仓现有编号族。例：`sdd-loop guide --type specification.entity-table`。
 
+## 需求单元定位
+
+先取得当前 Git 分支并运行 `sdd-loop check`。仓库已经采用 demand unit 时，优先让工具按当前分支自动选择；需要查看或操作另一需求时才显式使用 `sdd-loop check --demand <demandId>`。显式选择与当前分支不一致只是一条可见提示，不得静默改分支。`--demand` 与 `--stream` 是两种不同布局，不能同时使用；`stream` 是同仓子系统，不是 Git 仓库。
+
+新建需求单元时，由用户确认稳定的 `demandId` 和承载分支，在同一次变更中创建 `docs/loops/demands/<demandId>/status.md` 与首个 `docs/loops/demands/<demandId>/loop-1/requirements.md`。状态 frontmatter 除既有字段外必须写 `demandId: <demandId>` 与 `branch: <分支名>`；`demandId` 只允许字母、数字、点、下划线和连字符，不能是 `.` 或 `..`。不要先建空状态或空 Loop 目录。
+
+仓库仍使用根 `docs/loops/status.md` 时继续兼容旧流程，不为一个新需求直接复制第二份根状态。确实需要并发需求时先走 `sdd-upgrade` 的 demand unit 迁移。一个需求跨多个 Git 仓库时加载 `sdd-solo`：本 skill 只在主仓维护权威需求，不要求去参与仓重复访谈或另开 SDD 对话。
+
 ## 治理模式：先记录，审批后停下
 
 状态文件含 `governanceVersion: 1` 时：
@@ -127,7 +135,7 @@ description: 用访谈把一个产品/一轮 Loop 的四份 SDD 文档（require
 
 阶段文档住在 Loop 目录里（默认 `docs/loops/loop-N/`，以状态文件为准）：requirements.md / architecture.md / specification.md / tasks.md。implementation 由 coding agent 执行；自动化验证之后的架构回写、AI 审查和人工审查包由 `sdd-review` 接管。
 
-**Loop 目录由第 0 站连同 requirements.md 一起建。** 初始化只留 `activeLoop: null` + `nextLoop: N`（空目录进不了 git，提前建会被 check 判成悬空指针）。第 0 站写出 requirements.md 的同时，把状态文件的 `activeLoop` 改成 `N`——目录里有了被跟踪的文件，声明才对得上事实。
+**Loop 目录由第 0 站连同 requirements.md 一起建。** 初始化只留 `activeLoop: null` + `nextLoop: N`（空目录进不了 git，提前建会被 check 判成悬空指针）。第 0 站写出 requirements.md 的同时，把所选需求单元的状态文件中 `activeLoop` 改成 `N`——目录里有了被跟踪的文件，声明才对得上事实。
 
 **分流仓库里路径多一层**：状态文件是 `docs/loops/<流名>/status.md`，Loop 目录是 `docs/loops/<流名>/loop-N/`，归档是 `docs/archive/<流名>/`。以你所在那条流的状态文件为准，别的流的路径与你无关。
 

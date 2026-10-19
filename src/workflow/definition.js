@@ -18,6 +18,12 @@ function safeName(value, label) {
   return String(value);
 }
 
+function safeDemandId(value) {
+  const demandId = String(value ?? "");
+  if (![".", ".."].includes(demandId) && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(demandId)) return demandId;
+  throw new Error(`demand 不合法：${value}`);
+}
+
 export function parseWorkflow(text, expectedRoute) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   if (!match) throw new Error("workflow.md 缺少 YAML front-matter。");
@@ -74,11 +80,14 @@ export function parseWorkflow(text, expectedRoute) {
   return config;
 }
 
-export function loadWorkflow(repoRoot, route, { stream = null, workflowDir = "docs/sdd/workflows" } = {}) {
+export function loadWorkflow(repoRoot, route, { stream = null, demand = null, workflowDir = "docs/sdd/workflows" } = {}) {
   if (!ROUTES.includes(route)) throw new Error(`未知流程：${route}`);
+  if (stream && demand) throw new Error("--stream 与 --demand 不能同时使用。");
   if (stream) safeName(stream, "stream");
+  if (demand) demand = safeDemandId(demand);
   const root = path.resolve(repoRoot);
   const relative = [
+    ...(demand ? [path.join(workflowDir, "demands", demand, route, "workflow.md")] : []),
     ...(stream ? [path.join(workflowDir, stream, route, "workflow.md")] : []),
     path.join(workflowDir, route, "workflow.md"),
   ];

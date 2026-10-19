@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { HOST_IDS, ITEM_STATES, planInstall } from "../install/plan.js";
@@ -53,11 +54,28 @@ const FULL_TEST_RESOURCES = Object.freeze([
   "skills/sdd-full-test/references/wms-reference.md",
 ]);
 
+const SOLO_RESOURCES = Object.freeze([
+  "scripts/lib/solo.mjs",
+  "src/solo/validation.js",
+  "skills/sdd-solo/SKILL.md",
+  "skills/sdd-solo/references/participant-manifest.md",
+  "skills/sdd-solo/references/repository-unit.md",
+  "skills/sdd-solo/references/trace-export.md",
+  "skills/sdd-solo/references/openspec-light.md",
+  "skills/sdd-solo/references/release-checklist.md",
+  "skills/sdd-solo/assets/repositories.json",
+  "skills/sdd-solo/assets/release-checklist.md",
+  "skills/sdd-solo/assets/repository-receipt.json",
+  "skills/sdd-solo/assets/source.json",
+  "skills/sdd-solo/assets/solo-closure-receipt.json",
+]);
+
 const GOVERNANCE_SKILLS = Object.freeze(["sdd-init", "sdd-interview", "sdd-upgrade", "sdd-review"]);
 const V2_SKILLS = Object.freeze([...GOVERNANCE_SKILLS, "sdd-route"]);
 const HOTFIX_SKILLS = Object.freeze(["sdd-hotfix"]);
 const DEBUG_SKILLS = Object.freeze(["sdd-debug"]);
 const FULL_TEST_SKILLS = Object.freeze(["sdd-full-test"]);
+const SOLO_SKILLS = Object.freeze(["sdd-solo"]);
 
 function summarizeHostReadiness(packageRoot, { host, home, env, requiredSkills }) {
   if (!host) return null;
@@ -147,6 +165,13 @@ export function buildCapabilityReport(packageRoot, options = {}) {
       return true;
     }
   });
+  const missingSoloResources = SOLO_RESOURCES.filter((rel) => {
+    try {
+      return !fs.statSync(path.join(root, rel)).isFile();
+    } catch {
+      return true;
+    }
+  });
   const fullTestCapability = {
     available: missingFullTestResources.length === 0,
     supportedProtocolVersions: [1],
@@ -183,11 +208,18 @@ export function buildCapabilityReport(packageRoot, options = {}) {
         missingResources: [...missingResources, ...missingDebugResources].filter((value, index, all) => all.indexOf(value) === index),
       },
       "full-test": fullTestCapability,
+      solo: {
+        available: missingSoloResources.length === 0,
+        supportedProtocolVersions: [1],
+        checks: ["participant-baseline", "repository-readiness", "aggregate-review", "release-readiness", "export-integrity"],
+        engineeringExtensions: [...BUILTIN_EXTENSIONS],
+        missingResources: missingSoloResources,
+      },
     },
   };
   const readinessOptions = {
     host: options.host,
-    home: options.home ?? process.env.HOME,
+    home: options.home ?? process.env.HOME ?? os.homedir(),
     env: options.env ?? process.env,
   };
   const hostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: GOVERNANCE_SKILLS });
@@ -195,6 +227,10 @@ export function buildCapabilityReport(packageRoot, options = {}) {
   const hotfixHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: HOTFIX_SKILLS });
   const debugHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: DEBUG_SKILLS });
   const fullTestHostReadiness = summarizeHostReadiness(root, { ...readinessOptions, requiredSkills: FULL_TEST_SKILLS });
+  const soloHostReadiness = summarizeHostReadiness(root, {
+    ...readinessOptions,
+    requiredSkills: SOLO_SKILLS,
+  });
   if (hostReadiness) {
     report.hostReadiness = hostReadiness;
     report.hostReadinessByCapability = {
@@ -203,6 +239,7 @@ export function buildCapabilityReport(packageRoot, options = {}) {
       hotfix: hotfixHostReadiness,
       debug: debugHostReadiness,
       "full-test": fullTestHostReadiness,
+      solo: soloHostReadiness,
     };
   }
   return report;
